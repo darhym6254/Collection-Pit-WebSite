@@ -1350,6 +1350,57 @@ h1.app-title {
   font-size: 12px;
 }
 
+/* ── Dashboard extras ── */
+.dash-scroll {
+  overflow-y: auto;
+}
+
+.deck-dash {
+  flex: 1;
+}
+
+.deck-dash-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 0;
+  border-bottom: 1px solid #12121c;
+}
+
+.deck-dash-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.deck-dash-curve {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+/* ── Shopping list ── */
+.shopping-body {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  overflow-y: auto;
+}
+
+.wish-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid #12121c;
+  font-size: 13px;
+}
+
 .decklist-input {
   width: 100%;
   background: var(--input);

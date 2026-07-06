@@ -9,10 +9,16 @@ import {
   type Deck,
   type DeckCard,
 } from "../lib/decks";
+import {
+  addToWishlist,
+  subscribeWishlist,
+  type WishEntry,
+} from "../lib/wishlist";
 import { Library } from "./Library";
 import { BindersPage } from "./BindersPage";
 import { Dashboard } from "./Dashboard";
 import { DeckView } from "./DeckView";
+import { ShoppingView } from "./ShoppingView";
 
 export type NavKey =
   | "library"
@@ -20,6 +26,7 @@ export type NavKey =
   | "commanders"
   | "binders"
   | "dashboard"
+  | "shopping"
   | "deck";
 
 const BINDER_RARITIES = ["Rare", "Mythic", "Special"];
@@ -63,6 +70,20 @@ export function Shell() {
     }
     return subscribeDecks(user.uid, setDecks);
   }, [user]);
+
+  const [wishlist, setWishlist] = useState<WishEntry[]>([]);
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    return subscribeWishlist(user.uid, setWishlist);
+  }, [user]);
+
+  const onAddToWishlist = (name: string, qty: number) => {
+    if (user) {
+      void addToWishlist(user.uid, wishlist, name, qty);
+    }
+  };
 
   const openDeck = (id: string) => {
     setOpenDeckId(id);
@@ -162,6 +183,12 @@ export function Shell() {
           >
             Dashboard
           </button>
+          <button
+            className={`nav-btn${nav === "shopping" ? " active" : ""}`}
+            onClick={() => go("shopping")}
+          >
+            Shopping List
+          </button>
         </nav>
         <div className="side-decks">
           <div className="side-section">DECKS</div>
@@ -225,6 +252,15 @@ export function Shell() {
             refMap={refMap}
             tagsMap={tagsMap}
             prefix="library"
+            onAddToWishlist={onAddToWishlist}
+          />
+        )}
+        {nav === "shopping" && (
+          <ShoppingView
+            cards={cards}
+            decks={decks}
+            wishlist={wishlist}
+            refMap={refMap}
           />
         )}
         {nav === "binder" && (
@@ -288,7 +324,9 @@ export function Shell() {
               <p className="placeholder pad">Deck not found.</p>
             );
           })()}
-        {nav === "dashboard" && <Dashboard cards={cards} />}
+        {nav === "dashboard" && (
+          <Dashboard cards={cards} decks={decks} refMap={refMap} />
+        )}
         <div className="status-bar">
           <span />
           <span className="ref-status">{refStatus}</span>

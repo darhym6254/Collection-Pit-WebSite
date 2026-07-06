@@ -185,6 +185,8 @@ interface LibraryProps {
   commanderLock?: boolean;
   binderFilter?: string;
   onBack?: () => void;
+  /** Card Search rows get an "+ List" (shopping list) button. */
+  onAddToWishlist?: (name: string, qty: number) => void;
 }
 
 function loadSetting(prefix: string, key: string, fallback: string): string {
@@ -207,6 +209,7 @@ export function Library({
   commanderLock,
   binderFilter,
   onBack,
+  onAddToWishlist,
 }: LibraryProps) {
   const { user } = useAuth();
   const locked = Boolean(rarityLock || binderFilter || commanderLock);
@@ -940,6 +943,7 @@ export function Library({
           ownedNames={
             new Set((cards ?? []).map((c) => c.name.toLowerCase()))
           }
+          onAddToWishlist={onAddToWishlist}
           onClose={() => setShowSearch(false)}
         />
       )}

@@ -175,9 +175,11 @@ interface SearchHit {
  *  including cards you don't own (shopping-list wiring comes later). */
 export function CardSearchModal({
   ownedNames,
+  onAddToWishlist,
   onClose,
 }: {
   ownedNames: Set<string>;
+  onAddToWishlist?: (name: string, qty: number) => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -293,6 +295,7 @@ export function CardSearchModal({
                   <th>Set</th>
                   <th>Rarity</th>
                   <th className="num">Price</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -318,6 +321,20 @@ export function CardSearchModal({
                     </td>
                     <td className="num price">
                       {h.price > 0 ? `$${h.price.toFixed(2)}` : "—"}
+                    </td>
+                    <td>
+                      {onAddToWishlist && (
+                        <button
+                          className="ghost-btn small"
+                          title="Add to Shopping List"
+                          onClick={() => {
+                            onAddToWishlist(h.name, 1);
+                            setNote(`Added ${h.name} to the shopping list.`);
+                          }}
+                        >
+                          + List
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
