@@ -1,0 +1,143 @@
+/* Dark baseline echoing the Collection Pit desktop app:
+   near-black surfaces, cyan accents. */
+:root {
+  --bg: #05070d;
+  --surface: #0d0d1e;
+  --border: #1e1e30;
+  --text: #c8c8e0;
+  --text-dim: #666676;
+  --accent: #00c8d4;
+  --accent-dark: #007a88;
+  font-family: "Segoe UI", system-ui, Avenir, Helvetica, Arial, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ── Layout ── */
+.center-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar .app-title {
+  font-size: 18px;
+  margin-right: auto;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Pieces ── */
+.app-title {
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+h1.app-title {
+  font-size: 32px;
+  margin: 0 0 4px;
+}
+
+.tagline {
+  color: var(--text-dim);
+  margin: 0 0 24px;
+}
+
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 40px 48px;
+  text-align: center;
+}
+
+.user-email {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.placeholder {
+  color: var(--text-dim);
+  font-size: 15px;
+}
+
+.primary-btn {
+  background: linear-gradient(var(--accent-dark), #005566);
+  color: #e0f8ff;
+  border: 1px solid #009aaa;
+  border-radius: 6px;
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary-btn:hover {
+  background: linear-gradient(#009aaa, #007788);
+}
+
+.ghost-btn {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ghost-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
