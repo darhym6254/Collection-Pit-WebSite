@@ -13,6 +13,7 @@ import {
   fetchEnrichment,
   imageUrl,
 } from "../lib/scryfall";
+import type { RefEntry } from "../lib/reference";
 import { ManaCost } from "./ManaCost";
 import {
   ColorFilter,
@@ -72,7 +73,10 @@ interface AggRow {
   printings: CardRow[];
 }
 
-function aggregate(cards: CardRow[]): AggRow[] {
+function aggregate(
+  cards: CardRow[],
+  refMap: Map<string, RefEntry> | null,
+): AggRow[] {
   const byName = new Map<string, AggRow>();
   for (const c of cards) {
     const key = c.name.toLowerCase();
@@ -121,11 +125,31 @@ function aggregate(cards: CardRow[]): AggRow[] {
     }
     row.printings.push(c);
   }
-  return [...byName.values()];
+  const rows = [...byName.values()];
+  // Reference join (the desktop's LEFT JOIN card_reference): any card the
+  // per-printing data didn't cover gets its gameplay fields by name.
+  if (refMap) {
+    for (const row of rows) {
+      if (!row.type_line) {
+        const ref = refMap.get(row.name.toLowerCase());
+        if (ref) {
+          row.type_line = ref.type_line;
+          row.colors = ref.colors;
+          row.color_identity = ref.color_identity;
+          row.mana_cost = ref.mana_cost;
+          row.cmc = ref.cmc;
+          row.oracle_text = ref.oracle_text;
+          row.banned_in = ref.banned_in;
+        }
+      }
+    }
+  }
+  return rows;
 }
 
 interface LibraryProps {
   cards: CardRow[] | null;
+  refMap: Map<string, RefEntry> | null;
   prefix: string;
   title?: string;
   subtitle?: string;
@@ -145,6 +169,7 @@ function saveSetting(prefix: string, key: string, value: string) {
 
 export function Library({
   cards,
+  refMap,
   prefix,
   title,
   subtitle,
@@ -248,11 +273,9 @@ export function Library({
     return [...names].sort();
   }, [cards]);
 
-  const aggregated = useMemo(() => aggregate(inScope), [inScope]);
-
-  const unenriched = useMemo(
-    () => (cards ?? []).filter((c) => c.scryfall_id && !c.type_line).length,
-    [cards],
+  const aggregated = useMemo(
+    () => aggregate(inScope, refMap),
+    [inScope, refMap],
   );
 
   const filtered = useMemo(() => {
@@ -469,7 +492,7 @@ export function Library({
       {(title || onBack) && (
         <div className="view-header">
           {onBack && (
-            <button className="ghost-btn" onClick={onBack}>
+            <button className="stone-btn" onClick={onBack}>
               ← Back
             </button>
           )}
@@ -512,22 +535,21 @@ export function Library({
         {!locked && (
           <>
             <button
-              className="primary-btn"
+              className="stone-btn"
               disabled={busy}
               onClick={() => fileRef.current?.click()}
             >
               Import CSV
             </button>
             <button
-              className="ghost-btn"
+              className="stone-btn"
               disabled={busy}
-              title="Fetch types, colors, mana costs, rules text and current prices for your cards from Scryfall (uses each printing's Scryfall ID). Never runs automatically."
+              title="Optional: refresh per-printing data and current prices from Scryfall. Columns are already filled from the card reference automatically."
               onClick={() => {
                 void onEnrich();
               }}
             >
               Scryfall Online
-              {unenriched > 0 ? ` (${unenriched})` : ""}
             </button>
             <input
               ref={fileRef}

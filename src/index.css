@@ -82,14 +82,18 @@ h1.app-title {
 }
 
 .sidebar {
-  width: 200px;
+  width: 208px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 18px 0 14px;
-  background: rgba(5, 7, 13, 0.82);
-  border-right: 1px solid var(--border-dim);
+  /* The desktop skin's stone sidebar frame (9-slice, halved source:
+     512x768, rails ~150px). */
+  border-style: solid;
+  border-width: 8px 18px 10px 18px;
+  border-image: url("/art/sidebar_frame.png") 20 150 20 150 fill stretch;
+  background: rgba(5, 7, 13, 0.72);
 }
 
 .side-logo {
@@ -153,6 +157,19 @@ h1.app-title {
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 12px;
+  border-top: 1px solid var(--border-dim);
+  background: rgba(5, 7, 13, 0.7);
+}
+
+.ref-status {
+  color: #55557a;
+  font-size: 11px;
 }
 
 /* ── Collection view chrome ── */
@@ -536,9 +553,11 @@ h1.app-title {
 .preview-img-slot {
   width: 280px;
   height: 391px;
-  background: rgba(10, 10, 22, 0.82);
-  border: 1px solid var(--border-dim);
-  border-radius: 12px;
+  /* Ornate art frame from the desktop skin (627x627, slices halved). */
+  border-style: solid;
+  border-width: 22px;
+  border-image: url("/art/art_frame.png") 79 83 80 83 fill stretch;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -775,6 +794,38 @@ h1.app-title {
   cursor: default;
 }
 
+/* Ornate stone buttons — the desktop skin's three-state button art.
+   Slices are source pixels (rest/hover 512x192 -> 15 60; pressed
+   366x68 -> 14 45); border-width is the on-screen render size. */
+.stone-btn {
+  border-style: solid;
+  border-width: 7px 24px;
+  border-image: url("/art/button_rest.png") 15 60 15 60 fill stretch;
+  background: transparent;
+  color: #cfe8f2;
+  min-height: 32px;
+  min-width: 92px;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.stone-btn:hover:not(:disabled) {
+  border-image: url("/art/button_hover.png") 15 60 15 60 fill stretch;
+  color: #eaf6ff;
+}
+
+.stone-btn:active:not(:disabled) {
+  border-image: url("/art/button_pressed.png") 14 45 14 45 fill stretch;
+}
+
+.stone-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .ghost-btn {
   background: transparent;
   color: var(--text);
@@ -817,8 +868,10 @@ h1.app-title {
     flex-direction: row;
     align-items: center;
     padding: 8px 12px;
-    border-right: none;
+    border-image: none;
+    border-width: 0 0 1px 0;
     border-bottom: 1px solid var(--border-dim);
+    background: rgba(5, 7, 13, 0.82);
   }
 
   .side-logo {

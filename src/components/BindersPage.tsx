@@ -48,7 +48,7 @@ export function BindersPage({ cards, onOpenRare, onOpenBinder }: BindersPageProp
               worth $1.00 or more ({rareTotal} cards)
             </div>
           </div>
-          <button className="ghost-btn" onClick={onOpenRare}>
+          <button className="stone-btn" onClick={onOpenRare}>
             Open
           </button>
         </div>
@@ -60,7 +60,7 @@ export function BindersPage({ cards, onOpenRare, onOpenBinder }: BindersPageProp
                 {count ? `${count} card(s)` : "empty"}
               </div>
             </div>
-            <button className="ghost-btn" onClick={() => onOpenBinder(name)}>
+            <button className="stone-btn" onClick={() => onOpenBinder(name)}>
               Open
             </button>
           </div>
