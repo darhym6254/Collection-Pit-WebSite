@@ -8,7 +8,11 @@ import {
   displayColor,
   mainType,
 } from "../lib/colors";
-import { fetchEnrichment, imageUrl } from "../lib/scryfall";
+import {
+  fetchBulkEnrichment,
+  fetchEnrichment,
+  imageUrl,
+} from "../lib/scryfall";
 import { ManaCost } from "./ManaCost";
 import {
   ColorFilter,
@@ -403,22 +407,54 @@ export function Library({
     }
     setBusy(true);
     try {
-      const patches = await fetchEnrichment(cards, (done, total) => {
-        setStatus(`Scryfall lookup… ${done} / ${total} printings`);
-      });
-      if (patches.size === 0) {
-        setStatus("Everything is already enriched.");
-        return;
+      // Strategy 1: precise per-printing lookups (also refreshes prices).
+      let done = 0;
+      let incomplete = false;
+      const patchedIds = new Set<string>();
+      try {
+        const r = await fetchEnrichment(cards, (d, total) => {
+          setStatus(`Scryfall lookup… ${d} / ${total} printings`);
+        });
+        incomplete = r.incomplete;
+        if (r.patches.size > 0) {
+          await applyEnrichment(user.uid, cards, r.patches, (w, total) => {
+            setStatus(`Saving… ${w} / ${total} printings`);
+          });
+          done += r.patches.size;
+          for (const id of r.patches.keys()) {
+            patchedIds.add(id);
+          }
+        }
+      } catch {
+        incomplete = true;
       }
-      await applyEnrichment(user.uid, cards, patches, (written, total) => {
-        setStatus(`Saving… ${written} / ${total} printings`);
-      });
+
+      // Strategy 2: if the API path was blocked (ad-blockers, burst
+      // protection), one bulk download matched by name — the desktop's
+      // reference approach.
+      if (incomplete) {
+        const remaining = cards.filter(
+          (c) =>
+            c.scryfall_id && !c.type_line && !patchedIds.has(c.scryfall_id),
+        );
+        const bulk = await fetchBulkEnrichment(remaining, setStatus);
+        if (bulk.size > 0) {
+          await applyEnrichment(user.uid, cards, bulk, (w, total) => {
+            setStatus(`Saving… ${w} / ${total} printings`);
+          });
+          done += bulk.size;
+        }
+      }
+
       setStatus(
-        `Enriched ${patches.size} printings — types, colors, mana and prices updated.`,
+        done === 0
+          ? "Everything is already enriched."
+          : `Enriched ${done} printings — types, colors and mana filled in.`,
       );
     } catch (err) {
       setStatus(
-        `Enrichment failed: ${err instanceof Error ? err.message : err}`,
+        `Enrichment failed: ${err instanceof Error ? err.message : err}. ` +
+          `If you use an ad-blocker, allow api.scryfall.com and data.scryfall.io.`,
       );
     } finally {
       setBusy(false);
