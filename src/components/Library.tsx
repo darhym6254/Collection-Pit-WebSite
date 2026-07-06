@@ -29,6 +29,7 @@ import {
   imageUrl,
 } from "../lib/scryfall";
 import type { RefEntry } from "../lib/reference";
+import { allocatedMap, type Deck } from "../lib/decks";
 import { CardInfoModal } from "./CardInfoModal";
 import {
   AddCardModal,
@@ -187,6 +188,9 @@ interface LibraryProps {
   onBack?: () => void;
   /** Card Search rows get an "+ List" (shopping list) button. */
   onAddToWishlist?: (name: string, qty: number) => void;
+  /** Decks enable the In Decks/Available columns + modal Add to Deck. */
+  decks?: Deck[];
+  onAddToDeck?: (deckId: string, name: string, asCommander: boolean) => void;
 }
 
 function loadSetting(prefix: string, key: string, fallback: string): string {
@@ -210,6 +214,8 @@ export function Library({
   binderFilter,
   onBack,
   onAddToWishlist,
+  decks,
+  onAddToDeck,
 }: LibraryProps) {
   const { user } = useAuth();
   const locked = Boolean(rarityLock || binderFilter || commanderLock);
@@ -333,6 +339,9 @@ export function Library({
     () => aggregate(inScope, refMap),
     [inScope, refMap],
   );
+
+  // Deck allocation math: in-decks + available per name.
+  const allocated = useMemo(() => allocatedMap(decks ?? []), [decks]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -859,6 +868,8 @@ export function Library({
                   <th className="num" onClick={() => onSort("quantity")}>
                     Owned{arrow("quantity")}
                   </th>
+                  <th className="num">In Decks</th>
+                  <th className="num">Available</th>
                   <th className="num" onClick={() => onSort("price")}>
                     Price{arrow("price")}
                   </th>
@@ -895,6 +906,16 @@ export function Library({
                         {r.rarity}
                       </td>
                       <td className="num">{r.quantity}</td>
+                      <td className="num amber-num">
+                        {allocated.get(r.name.toLowerCase()) || ""}
+                      </td>
+                      <td className="num avail-num">
+                        {Math.max(
+                          0,
+                          r.quantity -
+                            (allocated.get(r.name.toLowerCase()) ?? 0),
+                        )}
+                      </td>
                       <td className="num price">
                         {r.price > 0 ? `$${r.price.toFixed(2)}` : "—"}
                       </td>
@@ -908,7 +929,7 @@ export function Library({
           )}
         </div>
 
-        <Preview row={selected} />
+        <Preview row={selected} allocated={allocated} />
       </div>
 
       {modalAt !== null && (
@@ -921,6 +942,22 @@ export function Library({
             user
               ? (name, tags) => {
                   void setCardTags(user.uid, name, tags);
+                }
+              : undefined
+          }
+          deckNames={decks?.map((d) => ({ id: d.id, name: d.name }))}
+          onAddToDeck={onAddToDeck}
+          onAddToBinder={
+            user && cards
+              ? (row) => {
+                  const b = window.prompt(
+                    `Move ${row.name} to binder (blank = none):\nExisting: ${binderNames.join(", ") || "—"}`,
+                  );
+                  if (b !== null) {
+                    void movePrintings(user.uid, cards, row.printings, {
+                      binder: b.trim(),
+                    });
+                  }
                 }
               : undefined
           }
@@ -968,7 +1005,13 @@ export function Library({
   );
 }
 
-function Preview({ row }: { row: AggRow | null }) {
+function Preview({
+  row,
+  allocated,
+}: {
+  row: AggRow | null;
+  allocated: Map<string, number>;
+}) {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     setLoaded(false);
@@ -1020,8 +1063,22 @@ function Preview({ row }: { row: AggRow | null }) {
           </div>
           <div className="preview-badges">
             <span className="badge">
+              Available
+              <b>
+                {Math.max(
+                  0,
+                  row.quantity -
+                    (allocated.get(row.name.toLowerCase()) ?? 0),
+                )}
+              </b>
+            </span>
+            <span className="badge">
               Owned
               <b>{row.quantity}</b>
+            </span>
+            <span className="badge amber">
+              In Decks
+              <b>{allocated.get(row.name.toLowerCase()) ?? 0}</b>
             </span>
             <span className="badge gold">
               Value

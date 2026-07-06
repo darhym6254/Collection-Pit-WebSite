@@ -12,6 +12,11 @@ interface Props {
   /** Lowercased name -> tags; with onSetTags enables the Tags editor. */
   tagsMap?: Map<string, string[]>;
   onSetTags?: (name: string, tags: string[]) => void;
+  /** Action buttons (Phase 7): present handlers enable each button. */
+  deckNames?: { id: string; name: string }[];
+  onAddToDeck?: (deckId: string, name: string, asCommander: boolean) => void;
+  onAddToBinder?: (row: AggRow) => void;
+  onMarkOwned?: (row: AggRow) => void;
 }
 
 /** Card Info modal — the web version of the desktop's read-first Card
@@ -24,7 +29,12 @@ export function CardInfoModal({
   onClose,
   tagsMap,
   onSetTags,
+  deckNames,
+  onAddToDeck,
+  onAddToBinder,
+  onMarkOwned,
 }: Props) {
+  const [deckPick, setDeckPick] = useState("");
   const [index, setIndex] = useState(() =>
     Math.max(0, Math.min(initial, rows.length - 1)),
   );
@@ -229,6 +239,51 @@ export function CardInfoModal({
         </div>
 
         <div className="modal-footer">
+          {onAddToDeck && deckNames && deckNames.length > 0 && (
+            <>
+              <select
+                className="combo"
+                value={deckPick}
+                onChange={(e) => setDeckPick(e.target.value)}
+              >
+                <option value="">Pick deck…</option>
+                {deckNames.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="stone-btn"
+                disabled={!deckPick}
+                onClick={() => onAddToDeck(deckPick, row.name, false)}
+              >
+                Add to Deck
+              </button>
+              <button
+                className="stone-btn"
+                disabled={!deckPick}
+                title="Add as commander"
+                onClick={() => onAddToDeck(deckPick, row.name, true)}
+              >
+                ★ Commander
+              </button>
+            </>
+          )}
+          {onAddToBinder && row.quantity > 0 && (
+            <button className="stone-btn" onClick={() => onAddToBinder(row)}>
+              Add to Binder
+            </button>
+          )}
+          {onMarkOwned && row.quantity === 0 && (
+            <button
+              className="primary-btn"
+              onClick={() => onMarkOwned(row)}
+            >
+              Mark as Owned
+            </button>
+          )}
+          <div className="toolbar-spacer" />
           <button className="stone-btn" onClick={onClose}>
             Close
           </button>

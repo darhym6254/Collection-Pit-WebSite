@@ -5,7 +5,9 @@ import { parseManaBoxCsv, type CardRow } from "../lib/manabox";
 import { loadReference, type RefEntry } from "../lib/reference";
 import {
   createDeck,
+  saveDeck,
   subscribeDecks,
+  withCardAdded,
   type Deck,
   type DeckCard,
 } from "../lib/decks";
@@ -19,6 +21,7 @@ import { BindersPage } from "./BindersPage";
 import { Dashboard } from "./Dashboard";
 import { DeckView } from "./DeckView";
 import { ShoppingView } from "./ShoppingView";
+import { HelpView } from "./HelpView";
 
 export type NavKey =
   | "library"
@@ -27,6 +30,7 @@ export type NavKey =
   | "binders"
   | "dashboard"
   | "shopping"
+  | "help"
   | "deck";
 
 const BINDER_RARITIES = ["Rare", "Mythic", "Special"];
@@ -82,6 +86,13 @@ export function Shell() {
   const onAddToWishlist = (name: string, qty: number) => {
     if (user) {
       void addToWishlist(user.uid, wishlist, name, qty);
+    }
+  };
+
+  const onAddToDeck = (deckId: string, name: string, asCommander: boolean) => {
+    const deck = decks.find((d) => d.id === deckId);
+    if (deck && user) {
+      void saveDeck(user.uid, withCardAdded(deck, name, 1, asCommander));
     }
   };
 
@@ -232,6 +243,12 @@ export function Shell() {
           />
         </div>
         <div className="side-spacer" />
+        <button
+          className={`nav-btn${nav === "help" ? " active" : ""}`}
+          onClick={() => go("help")}
+        >
+          Help &amp; Guide
+        </button>
         <div className="side-user">
           <span className="side-email">{user?.email}</span>
           <button
@@ -253,6 +270,8 @@ export function Shell() {
             tagsMap={tagsMap}
             prefix="library"
             onAddToWishlist={onAddToWishlist}
+            decks={decks}
+            onAddToDeck={onAddToDeck}
           />
         )}
         {nav === "shopping" && (
@@ -327,6 +346,7 @@ export function Shell() {
         {nav === "dashboard" && (
           <Dashboard cards={cards} decks={decks} refMap={refMap} />
         )}
+        {nav === "help" && <HelpView />}
         <div className="status-bar">
           <span />
           <span className="ref-status">{refStatus}</span>

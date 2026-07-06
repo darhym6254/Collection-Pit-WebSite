@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useAuth } from "../auth/useAuth";
+import { addCardManual } from "../lib/collection";
 import { displayColor, mainType } from "../lib/colors";
 import {
   allocatedMap,
@@ -489,6 +490,43 @@ export function DeckView({
           index={Math.max(0, modalAt)}
           onClose={() => setModalRows(null)}
           tagsMap={tagsMap}
+          onMarkOwned={
+            user && cards
+              ? (row) => {
+                  const qty = parseInt(
+                    window.prompt(
+                      `How many copies of ${row.name} do you now own?`,
+                      "1",
+                    ) ?? "",
+                    10,
+                  );
+                  if (Number.isFinite(qty) && qty > 0) {
+                    void addCardManual(user.uid, cards, {
+                      name: row.name,
+                      quantity: qty,
+                      foil: false,
+                      condition: "near_mint",
+                      language: "EN",
+                      binder: "",
+                      set_code: "",
+                      set_name: "",
+                      collector_number: "",
+                      rarity: "",
+                      scryfall_id: "",
+                      price_usd: 0,
+                      price_foil: 0,
+                      type_line: row.type_line,
+                      colors: row.colors,
+                      color_identity: row.color_identity,
+                      mana_cost: row.mana_cost,
+                      cmc: row.cmc,
+                      oracle_text: row.oracle_text,
+                      banned_in: row.banned_in,
+                    });
+                  }
+                }
+              : undefined
+          }
         />
       )}
       {showImport && (
