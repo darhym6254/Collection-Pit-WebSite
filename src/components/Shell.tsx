@@ -1,18 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/useAuth";
 import { subscribeCards, subscribeTags } from "../lib/collection";
-import type { CardRow } from "../lib/manabox";
+import { parseManaBoxCsv, type CardRow } from "../lib/manabox";
 import { loadReference, type RefEntry } from "../lib/reference";
+import {
+  createDeck,
+  subscribeDecks,
+  type Deck,
+  type DeckCard,
+} from "../lib/decks";
 import { Library } from "./Library";
 import { BindersPage } from "./BindersPage";
 import { Dashboard } from "./Dashboard";
+import { DeckView } from "./DeckView";
 
 export type NavKey =
   | "library"
   | "binder"
   | "commanders"
   | "binders"
-  | "dashboard";
+  | "dashboard"
+  | "deck";
 
 const BINDER_RARITIES = ["Rare", "Mythic", "Special"];
 const VALUE_FLOOR = 1.0;
@@ -31,6 +39,9 @@ export function Shell() {
   const [refStatus, setRefStatus] = useState("Loading card reference…");
 
   const [tagsMap, setTagsMap] = useState<Map<string, string[]>>(new Map());
+  const [decks, setDecks] = useState<Deck[]>([]);
+  const [openDeckId, setOpenDeckId] = useState("");
+  const deckFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user) {
@@ -45,6 +56,51 @@ export function Shell() {
     }
     return subscribeTags(user.uid, setTagsMap);
   }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    return subscribeDecks(user.uid, setDecks);
+  }, [user]);
+
+  const openDeck = (id: string) => {
+    setOpenDeckId(id);
+    setNav("deck");
+    setOpenBinder("");
+  };
+
+  const onNewDeck = () => {
+    const name = window.prompt("Deck name:");
+    if (name?.trim() && user) {
+      void createDeck(user.uid, name.trim(), "Commander").then(openDeck);
+    }
+  };
+
+  const onImportDeckFile = async (file: File) => {
+    if (!user) {
+      return;
+    }
+    const { cards: parsed } = parseManaBoxCsv(await file.text());
+    if (!parsed.length) {
+      return;
+    }
+    // Deck entries hold DESIRED counts only — the library is unchanged.
+    const byName = new Map<string, number>();
+    for (const c of parsed) {
+      const k = c.name;
+      byName.set(k, (byName.get(k) ?? 0) + c.quantity);
+    }
+    const entries: DeckCard[] = [...byName.entries()].map(([n, q]) => ({
+      card_name: n,
+      quantity: q,
+      is_commander: false,
+      is_sideboard: false,
+      category: "",
+    }));
+    const name = file.name.replace(/\.csv$/i, "");
+    void createDeck(user.uid, name, "Commander", entries).then(openDeck);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -107,6 +163,47 @@ export function Shell() {
             Dashboard
           </button>
         </nav>
+        <div className="side-decks">
+          <div className="side-section">DECKS</div>
+          <div className="side-deck-list">
+            {decks.map((d) => (
+              <button
+                key={d.id}
+                className={`nav-btn deck-nav${
+                  nav === "deck" && openDeckId === d.id ? " active" : ""
+                }`}
+                onClick={() => openDeck(d.id)}
+              >
+                {d.name}
+              </button>
+            ))}
+            {decks.length === 0 && (
+              <span className="side-hint">No decks yet</span>
+            )}
+          </div>
+          <button className="stone-btn side-newdeck" onClick={onNewDeck}>
+            + New Deck
+          </button>
+          <button
+            className="ghost-btn side-importdeck"
+            onClick={() => deckFileRef.current?.click()}
+          >
+            Import Deck
+          </button>
+          <input
+            ref={deckFileRef}
+            type="file"
+            accept=".csv,text/csv"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) {
+                void onImportDeckFile(f);
+              }
+            }}
+          />
+        </div>
         <div className="side-spacer" />
         <div className="side-user">
           <span className="side-email">{user?.email}</span>
@@ -175,6 +272,22 @@ export function Shell() {
               onOpenBinder={setOpenBinder}
             />
           ))}
+        {nav === "deck" &&
+          (() => {
+            const deck = decks.find((d) => d.id === openDeckId);
+            return deck ? (
+              <DeckView
+                deck={deck}
+                decks={decks}
+                cards={cards}
+                refMap={refMap}
+                tagsMap={tagsMap}
+                onDeleted={() => go("library")}
+              />
+            ) : (
+              <p className="placeholder pad">Deck not found.</p>
+            );
+          })()}
         {nav === "dashboard" && <Dashboard cards={cards} />}
         <div className="status-bar">
           <span />

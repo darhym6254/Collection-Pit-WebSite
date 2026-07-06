@@ -1105,6 +1105,263 @@ h1.app-title {
   width: 220px;
 }
 
+/* ── Sidebar decks ── */
+.side-decks {
+  width: 100%;
+  padding: 12px 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+}
+
+.side-section {
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  border-top: 1px solid var(--border-dim);
+  padding-top: 10px;
+}
+
+.side-deck-list {
+  overflow-y: auto;
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-btn.deck-nav {
+  font-size: 13px;
+  padding: 6px 10px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-hint {
+  color: #44445a;
+  font-size: 11px;
+  padding: 4px 10px;
+}
+
+.side-newdeck {
+  margin-top: 4px;
+}
+
+.side-importdeck {
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
+/* ── Deck view ── */
+.deck-header {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.deck-title {
+  cursor: pointer;
+}
+
+.deck-title:hover {
+  text-decoration: underline;
+}
+
+.legality-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.legality-badge.ok {
+  color: #5ab85a;
+  background: rgba(90, 184, 90, 0.12);
+}
+
+.legality-badge.bad {
+  color: #f05a5a;
+  background: rgba(240, 90, 90, 0.12);
+}
+
+.legality-badge.unknown {
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.deck-section td {
+  color: var(--amber);
+  font-weight: 700;
+  padding-top: 10px;
+}
+
+.deck-category td {
+  color: var(--text-mid);
+  font-style: italic;
+  padding-left: 22px;
+}
+
+.deck-ok {
+  color: #5ab85a;
+}
+
+.deck-tight {
+  color: #e0a84a;
+}
+
+.deck-missing {
+  color: #f08070;
+}
+
+.deck-illegal {
+  color: #ff5a5a;
+}
+
+/* ── Deck analytics strip ── */
+.deck-analytics {
+  display: flex;
+  gap: 16px;
+  padding: 8px 16px;
+  flex-wrap: wrap;
+}
+
+.da-block {
+  background: var(--panel);
+  border: 1px solid var(--border-dim);
+  border-radius: 8px;
+  padding: 10px 14px;
+  min-width: 220px;
+}
+
+.da-title {
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.da-curve {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 78px;
+}
+
+.da-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.da-bar {
+  width: 18px;
+  background: #0e7490;
+  border-radius: 2px 2px 0 0;
+}
+
+.da-label,
+.da-count {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.da-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  margin-bottom: 3px;
+  width: 220px;
+}
+
+.da-types {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+/* ── Deck browser ── */
+.deck-browser {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-style: solid;
+  border-width: 22px;
+  border-image: url("/assets/art_frame.png") 79 83 80 83 stretch;
+  background: var(--panel);
+  padding: 6px;
+  min-height: 0;
+}
+
+.deck-browser-opts {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding-bottom: 6px;
+}
+
+.deck-browser-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.deck-browser-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-bottom: 1px solid #12121c;
+}
+
+.deck-browser-row:hover {
+  background: rgba(0, 200, 212, 0.06);
+}
+
+.dbr-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dbr-main .card-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dbr-sub {
+  font-size: 11px;
+}
+
+.ghost-btn.small {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.decklist-input {
+  width: 100%;
+  background: var(--input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
 .spinner {
   width: 36px;
   height: 36px;

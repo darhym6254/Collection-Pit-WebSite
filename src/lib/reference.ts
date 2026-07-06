@@ -16,7 +16,13 @@ export interface RefEntry {
   cmc: number;
   oracle_text: string;
   banned_in: string;
+  /** Per-format status for the tracked formats ("legal", "not_legal",
+   *  "banned", "restricted") — drives deck validation. */
+  legalities: Record<string, string>;
 }
+
+/** Bump when RefEntry's shape changes so stale caches re-download. */
+const SCHEMA = 2;
 
 const BULK_META = "https://api.scryfall.com/bulk-data/oracle-cards";
 const DB_NAME = "cp-reference";
@@ -95,6 +101,10 @@ function toEntry(sc: ScryCard): RefEntry {
       .filter(Boolean)
       .join("\n//\n");
   }
+  const legalities: Record<string, string> = {};
+  for (const fmt of Object.keys(FORMAT_LABELS)) {
+    legalities[fmt] = sc.legalities?.[fmt] ?? "not_legal";
+  }
   return {
     type_line: sc.type_line ?? "",
     colors: (colors ?? []).join(","),
@@ -105,6 +115,7 @@ function toEntry(sc: ScryCard): RefEntry {
     cmc: sc.cmc ?? 0,
     oracle_text: oracle,
     banned_in: bannedIn(sc.legalities),
+    legalities,
   };
 }
 
@@ -180,10 +191,15 @@ export async function loadReference(
     // offline — try the cache
   }
 
-  // 2. Cached and current? Use it.
+  // 2. Cached, current and same schema? Use it.
   try {
     const cachedUri = await kvGet<string>("uri");
-    if (cachedUri && (currentUri === "" || cachedUri === currentUri)) {
+    const cachedSchema = (await kvGet<number>("schema")) ?? 1;
+    if (
+      cachedSchema === SCHEMA &&
+      cachedUri &&
+      (currentUri === "" || cachedUri === currentUri)
+    ) {
       const entries = await kvGet<[string, RefEntry][]>("entries");
       if (entries && entries.length > 0) {
         onStatus?.(`Reference: ${entries.length.toLocaleString()} cards`);
@@ -210,6 +226,7 @@ export async function loadReference(
   try {
     await kvSet("entries", [...map.entries()]);
     await kvSet("uri", currentUri);
+    await kvSet("schema", SCHEMA);
   } catch {
     // cache write failed (private mode / quota) — still usable in-memory
   }

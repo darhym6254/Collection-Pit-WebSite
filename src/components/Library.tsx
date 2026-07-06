@@ -97,7 +97,7 @@ export interface AggRow {
   printings: CardRow[];
 }
 
-function aggregate(
+export function aggregate(
   cards: CardRow[],
   refMap: Map<string, RefEntry> | null,
 ): AggRow[] {
