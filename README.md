@@ -45,8 +45,11 @@ Cloud Firestore, and Firebase Hosting. Firebase project: `collection-pit`.
 
 1. **Log in the Firebase CLI (one-time)**
 
+   The CLI is bundled as a dev dependency, so no global install is
+   needed — run it through npx:
+
    ```
-   firebase login
+   npx firebase login
    ```
 
 2. **Publish** (builds, then uploads Hosting + Firestore rules/indexes)
