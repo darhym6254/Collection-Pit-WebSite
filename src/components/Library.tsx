@@ -27,6 +27,7 @@ import {
   fetchBulkEnrichment,
   fetchEnrichment,
   imageUrl,
+  lookupByName,
 } from "../lib/scryfall";
 import type { RefEntry } from "../lib/reference";
 import { allocatedMap, type Deck } from "../lib/decks";
@@ -254,9 +255,12 @@ export function Library({
     () => loadSetting(prefix, "sortdesc", "0") === "1",
   );
   const [selected, setSelected] = useState<AggRow | null>(null);
+  // Multi-select (ctrl/cmd+click): lowercased names; bulk actions target it.
+  const [multiSel, setMultiSel] = useState<Set<string>>(new Set());
   // Card Info modal: index into the CURRENT filtered list, null = closed.
   const [modalAt, setModalAt] = useState<number | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [editTarget, setEditTarget] = useState<CardRow | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [showClear, setShowClear] = useState(false);
   const [ctx, setCtx] = useState<{ x: number; y: number; row: AggRow } | null>(
@@ -593,63 +597,99 @@ export function Library({
     }
     const uid = user.uid;
     const all = cards;
+    // Bulk scope: when the clicked row is part of a ctrl-click selection,
+    // actions hit every selected name; otherwise just the clicked one.
+    const targets =
+      multiSel.size > 1 && multiSel.has(row.name.toLowerCase())
+        ? filtered.filter((r) => multiSel.has(r.name.toLowerCase()))
+        : [row];
+    const printings = targets.flatMap((r) => r.printings);
+    const n = targets.length;
+    const who = n === 1 ? row.name : `${n} cards`;
     return [
+      ...(n === 1 && row.printings.length > 0
+        ? [
+            {
+              label: "Edit…",
+              act: () => setEditTarget(row.printings[0]),
+            },
+          ]
+        : []),
       {
-        label: `Set condition (${row.printings.length})`,
+        label: `Set condition (${n})`,
         children: CONDITIONS.map((c) => ({
           label: c,
           act: () => {
-            void movePrintings(uid, all, row.printings, { condition: c });
+            void movePrintings(uid, all, printings, { condition: c });
           },
         })),
       },
       {
-        label: "Set foil",
+        label: `Set foil (${n})`,
         children: [
           {
             label: "Foil ✦",
             act: () => {
-              void movePrintings(uid, all, row.printings, { foil: true });
+              void movePrintings(uid, all, printings, { foil: true });
             },
           },
           {
             label: "Non-foil",
             act: () => {
-              void movePrintings(uid, all, row.printings, { foil: false });
+              void movePrintings(uid, all, printings, { foil: false });
             },
           },
         ],
       },
       {
-        label: "+1 quantity",
+        label: `+1 quantity (${n})`,
         act: () => {
-          void adjustQuantity(uid, row.printings[0], +1);
-        },
-      },
-      {
-        label: "−1 quantity",
-        act: () => {
-          void adjustQuantity(uid, row.printings[0], -1);
-        },
-      },
-      {
-        label: "Move to binder…",
-        act: () => {
-          const b = window.prompt(
-            `Move ${row.name} to binder (blank = none):\nExisting: ${binderNames.join(", ") || "—"}`,
-            row.printings[0].binder,
-          );
-          if (b !== null) {
-            void movePrintings(uid, all, row.printings, { binder: b.trim() });
+          for (const t of targets) {
+            void adjustQuantity(uid, t.printings[0], +1);
           }
         },
       },
       {
-        label: `Delete ${row.name}`,
+        label: `−1 quantity (${n})`,
+        act: () => {
+          for (const t of targets) {
+            void adjustQuantity(uid, t.printings[0], -1);
+          }
+        },
+      },
+      {
+        label: `Move to binder… (${n})`,
+        act: () => {
+          const b = window.prompt(
+            `Move ${who} to binder (blank = none):\nExisting: ${binderNames.join(", ") || "—"}`,
+            row.printings[0]?.binder ?? "",
+          );
+          if (b !== null) {
+            void movePrintings(uid, all, printings, { binder: b.trim() });
+          }
+        },
+      },
+      ...(decks && decks.length > 0 && onAddToDeck
+        ? [
+            {
+              label: `Assign to deck (${n})`,
+              children: decks.map((d) => ({
+                label: d.name,
+                act: () => {
+                  for (const t of targets) {
+                    onAddToDeck(d.id, t.name, false);
+                  }
+                },
+              })),
+            },
+          ]
+        : []),
+      {
+        label: `Delete ${who}`,
         danger: true,
         act: () => {
-          if (window.confirm(`Delete all printings of ${row.name}?`)) {
-            void deletePrintings(uid, row.printings);
+          if (window.confirm(`Delete all printings of ${who}?`)) {
+            void deletePrintings(uid, printings);
           }
         },
       },
@@ -879,17 +919,37 @@ export function Library({
               </thead>
               <tbody>
                 {filtered.map((r, i) => {
-                  const isSel = selected?.name === r.name;
+                  const key = r.name.toLowerCase();
+                  const isSel =
+                    multiSel.has(key) || selected?.name === r.name;
                   const dc = displayColor(r.colors);
                   return (
                     <tr
                       key={r.name}
                       className={isSel ? "sel" : ""}
-                      onClick={() => setSelected(r)}
+                      onClick={(e) => {
+                        setSelected(r);
+                        if (e.ctrlKey || e.metaKey) {
+                          setMultiSel((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(key)) {
+                              next.delete(key);
+                            } else {
+                              next.add(key);
+                            }
+                            return next;
+                          });
+                        } else {
+                          setMultiSel(new Set([key]));
+                        }
+                      }}
                       onDoubleClick={() => setModalAt(i)}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         setSelected(r);
+                        if (!multiSel.has(key)) {
+                          setMultiSel(new Set([key]));
+                        }
                         setCtx({ x: e.clientX, y: e.clientY, row: r });
                       }}
                     >
@@ -969,8 +1029,48 @@ export function Library({
           onClose={() => setShowAdd(false)}
           onSubmit={(card) => {
             setShowAdd(false);
-            void addCardManual(user.uid, cards, card).then(() =>
-              setStatus(`Added ${card.quantity}× ${card.name}.`),
+            void (async () => {
+              let final = card;
+              if (!card.scryfall_id) {
+                // Fill in the printing identity from Scryfall by name so
+                // images/prices work for hand-entered cards.
+                setStatus(`Looking up ${card.name} on Scryfall…`);
+                const hit = await lookupByName(card.name);
+                if (hit) {
+                  final = {
+                    ...card,
+                    ...hit,
+                    // The user's explicit inputs win over the lookup.
+                    quantity: card.quantity,
+                    foil: card.foil,
+                    condition: card.condition,
+                    binder: card.binder,
+                    set_code: card.set_code || hit.set_code,
+                    collector_number:
+                      card.collector_number || hit.collector_number,
+                    rarity:
+                      card.rarity !== "Common" ? card.rarity : hit.rarity,
+                    price_usd: card.price_usd || (hit.price_usd ?? 0),
+                    price_foil: card.price_foil || (hit.price_foil ?? 0),
+                  };
+                }
+              }
+              await addCardManual(user.uid, cards, final);
+              setStatus(`Added ${final.quantity}× ${final.name}.`);
+            })();
+          }}
+        />
+      )}
+      {editTarget && user && cards && (
+        <AddCardModal
+          binders={binderNames}
+          initial={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSubmit={(card) => {
+            const original = editTarget;
+            setEditTarget(null);
+            void movePrintings(user.uid, cards, [original], card).then(() =>
+              setStatus(`Saved ${card.name}.`),
             );
           }}
         />

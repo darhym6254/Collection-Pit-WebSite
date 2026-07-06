@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import type { CardRow } from "../lib/manabox";
 import { ManaCost } from "./ManaCost";
+import { CardInfoModal } from "./CardInfoModal";
+import type { AggRow } from "./Library";
 
 export const CONDITIONS = [
   "mint",
@@ -14,26 +16,37 @@ export const CONDITIONS = [
 
 const RARITIES = ["Common", "Uncommon", "Rare", "Mythic", "Special"];
 
-/** Manual Add Card form — the web version of the desktop's Add Card
- *  dialog. Produces one printing; identical printings merge quantity. */
+/** Manual Add/Edit Card form — the web version of the desktop's card
+ *  dialog. Add produces one printing (identical printings merge
+ *  quantity); Edit is keyed to the printing passed as `initial`. */
 export function AddCardModal({
   binders,
+  initial,
   onSubmit,
   onClose,
 }: {
   binders: string[];
+  /** Present = edit mode, prefilled from this printing. */
+  initial?: CardRow;
   onSubmit: (card: CardRow) => void;
   onClose: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [setCode, setSetCode] = useState("");
-  const [collector, setCollector] = useState("");
-  const [qty, setQty] = useState(1);
-  const [foil, setFoil] = useState(false);
-  const [condition, setCondition] = useState("near_mint");
-  const [rarity, setRarity] = useState("Common");
-  const [price, setPrice] = useState("");
-  const [binder, setBinder] = useState("");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [setCode, setSetCode] = useState(initial?.set_code ?? "");
+  const [collector, setCollector] = useState(
+    initial?.collector_number ?? "",
+  );
+  const [qty, setQty] = useState(initial?.quantity ?? 1);
+  const [foil, setFoil] = useState(initial?.foil ?? false);
+  const [condition, setCondition] = useState(
+    initial?.condition ?? "near_mint",
+  );
+  const [rarity, setRarity] = useState(initial?.rarity || "Common");
+  const [price, setPrice] = useState(() => {
+    const p = initial ? (initial.foil ? initial.price_foil : initial.price_usd) : 0;
+    return p ? String(p) : "";
+  });
+  const [binder, setBinder] = useState(initial?.binder ?? "");
 
   const submit = () => {
     if (!name.trim()) {
@@ -41,17 +54,18 @@ export function AddCardModal({
     }
     const p = parseFloat(price) || 0;
     onSubmit({
+      ...(initial ?? {}),
       name: name.trim(),
       quantity: Math.max(1, qty),
       foil,
       condition,
-      language: "EN",
+      language: initial?.language ?? "EN",
       binder: binder.trim(),
       set_code: setCode.trim().toUpperCase(),
-      set_name: "",
+      set_name: initial?.set_name ?? "",
       collector_number: collector.trim(),
       rarity,
-      scryfall_id: "",
+      scryfall_id: initial?.scryfall_id ?? "",
       price_usd: foil ? 0 : p,
       price_foil: foil ? p : 0,
     });
@@ -67,7 +81,7 @@ export function AddCardModal({
       }}
     >
       <div className="modal form-modal">
-        <div className="modal-name">Add Card</div>
+        <div className="modal-name">{initial ? "Edit Card" : "Add Card"}</div>
         <div className="form-grid">
           <label>Name *</label>
           <input
@@ -154,7 +168,7 @@ export function AddCardModal({
             disabled={!name.trim()}
             onClick={submit}
           >
-            Add Card
+            {initial ? "Save" : "Add Card"}
           </button>
         </div>
       </div>
@@ -163,12 +177,37 @@ export function AddCardModal({
 }
 
 interface SearchHit {
+  id: string;
   name: string;
   type_line: string;
   mana_cost: string;
+  oracle_text: string;
+  cmc: number;
+  colors: string;
   set_code: string;
   rarity: string;
   price: number;
+}
+
+function hitToAggRow(h: SearchHit): AggRow {
+  return {
+    name: h.name,
+    quantity: 0,
+    price: h.price,
+    rarity: h.rarity,
+    set_code: h.set_code,
+    binder: "",
+    foil: false,
+    type_line: h.type_line,
+    colors: h.colors,
+    color_identity: "",
+    mana_cost: h.mana_cost,
+    cmc: h.cmc,
+    oracle_text: h.oracle_text,
+    banned_in: "",
+    scryfall_id: h.id,
+    printings: [],
+  };
 }
 
 /** Card Search — searches ALL Magic cards via the Scryfall API,
@@ -186,6 +225,7 @@ export function CardSearchModal({
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [infoAt, setInfoAt] = useState<number | null>(null);
 
   const run = async () => {
     const q = query.trim();
@@ -209,21 +249,34 @@ export function CardSearchModal({
         total_cards: number;
         has_more: boolean;
         data: {
+          id: string;
           name: string;
           type_line?: string;
           mana_cost?: string;
+          oracle_text?: string;
+          cmc?: number;
+          colors?: string[] | null;
           set?: string;
           rarity?: string;
           prices?: { usd?: string | null };
-          card_faces?: { mana_cost?: string }[];
+          card_faces?: { mana_cost?: string; oracle_text?: string }[];
         }[];
       };
       setHits(
         body.data.map((c) => ({
+          id: c.id,
           name: c.name,
           type_line: c.type_line ?? "",
           mana_cost:
             c.mana_cost || (c.card_faces?.[0]?.mana_cost ?? ""),
+          oracle_text:
+            c.oracle_text ||
+            (c.card_faces ?? [])
+              .map((f) => f.oracle_text ?? "")
+              .filter(Boolean)
+              .join("\n//\n"),
+          cmc: c.cmc ?? 0,
+          colors: (c.colors ?? []).join(","),
           set_code: (c.set ?? "").toUpperCase(),
           rarity: c.rarity
             ? c.rarity.charAt(0).toUpperCase() + c.rarity.slice(1)
@@ -300,7 +353,11 @@ export function CardSearchModal({
               </thead>
               <tbody>
                 {hits.map((h, i) => (
-                  <tr key={i}>
+                  <tr
+                    key={i}
+                    onDoubleClick={() => setInfoAt(i)}
+                    title="Double-click for Card Info"
+                  >
                     <td
                       className="card-name"
                       style={
@@ -348,6 +405,13 @@ export function CardSearchModal({
             Close
           </button>
         </div>
+        {infoAt !== null && hits && (
+          <CardInfoModal
+            rows={hits.map(hitToAggRow)}
+            index={infoAt}
+            onClose={() => setInfoAt(null)}
+          />
+        )}
       </div>
     </div>
   );

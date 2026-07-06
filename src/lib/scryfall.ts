@@ -249,3 +249,48 @@ export async function fetchBulkEnrichment(
 export function imageUrl(scryfallId: string): string {
   return `https://api.scryfall.com/cards/${scryfallId}?format=image&version=normal`;
 }
+
+/** Fuzzy by-name lookup — fills in printing identifiers (Scryfall ID,
+ *  set, collector number, rarity, prices) for manually added cards so
+ *  images and prices work without a CSV import. Returns null when the
+ *  name doesn't resolve. */
+export async function lookupByName(name: string): Promise<
+  | (Partial<CardRow> & {
+      scryfall_id: string;
+      set_code: string;
+      set_name: string;
+      collector_number: string;
+      rarity: string;
+    })
+  | null
+> {
+  try {
+    const res = await fetch(
+      `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}`,
+    );
+    if (!res.ok) {
+      return null;
+    }
+    const sc = (await res.json()) as ScryCard & {
+      set?: string;
+      set_name?: string;
+      collector_number?: string;
+      rarity?: string;
+      name?: string;
+    };
+    const patch = toPatch(sc, true);
+    return {
+      ...patch,
+      name: sc.name ?? name,
+      scryfall_id: sc.id,
+      set_code: (sc.set ?? "").toUpperCase(),
+      set_name: sc.set_name ?? "",
+      collector_number: sc.collector_number ?? "",
+      rarity: sc.rarity
+        ? sc.rarity.charAt(0).toUpperCase() + sc.rarity.slice(1)
+        : "",
+    };
+  } catch {
+    return null;
+  }
+}
