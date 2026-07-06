@@ -159,6 +159,31 @@ export async function clearLibrary(
   return done;
 }
 
+// ── Named binders (persist even when empty, like the desktop) ──────────────
+
+function bindersCol(uid: string) {
+  return collection(db, "users", uid, "binders");
+}
+
+export function subscribeBinders(
+  uid: string,
+  cb: (names: string[]) => void,
+): Unsubscribe {
+  return onSnapshot(bindersCol(uid), (snap) => {
+    cb(snap.docs.map((d) => (d.data() as { name: string }).name).sort());
+  });
+}
+
+export async function createBinder(uid: string, name: string): Promise<void> {
+  const bytes = new TextEncoder().encode(name.toLowerCase());
+  let bin = "";
+  for (const b of bytes) {
+    bin += String.fromCharCode(b);
+  }
+  const id = btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  await setDoc(doc(bindersCol(uid), id), { name });
+}
+
 // ── Card tags (name-keyed, like the desktop's card_tags table) ─────────────
 
 function tagsCol(uid: string) {

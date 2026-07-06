@@ -20,6 +20,7 @@ import {
   COLOR_RANK,
   colorsSubsetMatch,
   displayColor,
+  isCommanderEligible,
   mainType,
 } from "../lib/colors";
 import {
@@ -180,6 +181,8 @@ interface LibraryProps {
   subtitle?: string;
   rarityLock?: string[];
   valueFloor?: number;
+  /** Possible Commanders lock (name-level rule on joined data). */
+  commanderLock?: boolean;
   binderFilter?: string;
   onBack?: () => void;
 }
@@ -201,11 +204,12 @@ export function Library({
   subtitle,
   rarityLock,
   valueFloor,
+  commanderLock,
   binderFilter,
   onBack,
 }: LibraryProps) {
   const { user } = useAuth();
-  const locked = Boolean(rarityLock || binderFilter);
+  const locked = Boolean(rarityLock || binderFilter || commanderLock);
   const [search, setSearch] = useState("");
   const [typeF, setTypeF] = useState(() =>
     loadSetting(prefix, "type", "All Types"),
@@ -280,10 +284,25 @@ export function Library({
     sortDesc,
   ]);
 
+  // Possible Commanders is a NAME-level rule on reference-joined data.
+  const commanderNames = useMemo(() => {
+    if (!commanderLock) {
+      return null;
+    }
+    return new Set(
+      aggregate(cards ?? [], refMap)
+        .filter((r) => isCommanderEligible(r.type_line, r.oracle_text))
+        .map((r) => r.name.toLowerCase()),
+    );
+  }, [commanderLock, cards, refMap]);
+
   // Lock membership on the raw printings (Rare Binder / named binder).
   const inScope = useMemo(() => {
     return (cards ?? []).filter((c) => {
       if (binderFilter !== undefined && c.binder !== binderFilter) {
+        return false;
+      }
+      if (commanderNames && !commanderNames.has(c.name.toLowerCase())) {
         return false;
       }
       if (rarityLock) {
@@ -295,7 +314,7 @@ export function Library({
       }
       return true;
     });
-  }, [cards, rarityLock, valueFloor, binderFilter]);
+  }, [cards, rarityLock, valueFloor, binderFilter, commanderNames]);
 
   const binderNames = useMemo(() => {
     const names = new Set<string>();

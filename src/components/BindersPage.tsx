@@ -1,18 +1,40 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../auth/useAuth";
+import { createBinder, subscribeBinders } from "../lib/collection";
+import { isCommanderEligible } from "../lib/colors";
 import { cardPrice, type CardRow } from "../lib/manabox";
+import type { RefEntry } from "../lib/reference";
 
 interface BindersPageProps {
   cards: CardRow[] | null;
+  refMap: Map<string, RefEntry> | null;
   onOpenRare: () => void;
+  onOpenCommanders: () => void;
   onOpenBinder: (name: string) => void;
 }
 
 const BINDER_RARITIES = ["Rare", "Mythic", "Special"];
 
-/** Binders page: the automatic Rare Binder row first (same rarity-OR-$1+
- *  rule as the desktop), then every named binder from the imports. */
-export function BindersPage({ cards, onOpenRare, onOpenBinder }: BindersPageProps) {
+/** Binders page: the two automatic binders first (same membership rules
+ *  as the desktop), then every named binder — persistent ones from
+ *  Firestore plus any names found in imports. */
+export function BindersPage({
+  cards,
+  refMap,
+  onOpenRare,
+  onOpenCommanders,
+  onOpenBinder,
+}: BindersPageProps) {
+  const { user } = useAuth();
   const rows = cards ?? [];
+  const [persistent, setPersistent] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    return subscribeBinders(user.uid, setPersistent);
+  }, [user]);
 
   const rareTotal = useMemo(
     () =>
@@ -24,20 +46,47 @@ export function BindersPage({ cards, onOpenRare, onOpenBinder }: BindersPageProp
     [rows],
   );
 
+  const commanderTotal = useMemo(() => {
+    let n = 0;
+    for (const c of rows) {
+      const ref = refMap?.get(c.name.toLowerCase());
+      const type = c.type_line || ref?.type_line;
+      const oracle = c.oracle_text || ref?.oracle_text;
+      if (isCommanderEligible(type, oracle)) {
+        n += c.quantity;
+      }
+    }
+    return n;
+  }, [rows, refMap]);
+
   const binders = useMemo(() => {
     const counts = new Map<string, number>();
+    for (const name of persistent) {
+      counts.set(name, 0);
+    }
     for (const c of rows) {
       if (c.binder) {
         counts.set(c.binder, (counts.get(c.binder) ?? 0) + c.quantity);
       }
     }
     return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [rows]);
+  }, [rows, persistent]);
+
+  const onCreate = () => {
+    const name = window.prompt("Binder name:");
+    if (name?.trim() && user) {
+      void createBinder(user.uid, name.trim());
+    }
+  };
 
   return (
     <div className="collection-view">
       <div className="view-header">
         <span className="view-title">Binders</span>
+        <div className="toolbar-spacer" />
+        <button className="primary-btn" onClick={onCreate}>
+          + Create Binder
+        </button>
       </div>
       <div className="binder-list">
         <div className="binder-row">
@@ -49,6 +98,18 @@ export function BindersPage({ cards, onOpenRare, onOpenBinder }: BindersPageProp
             </div>
           </div>
           <button className="stone-btn" onClick={onOpenRare}>
+            Open
+          </button>
+        </div>
+        <div className="binder-row">
+          <div>
+            <div className="binder-name">Possible Commanders</div>
+            <div className="binder-sub">
+              automatic — legendary creatures, commander planeswalkers and
+              Backgrounds you own ({commanderTotal} cards)
+            </div>
+          </div>
+          <button className="stone-btn" onClick={onOpenCommanders}>
             Open
           </button>
         </div>
@@ -67,8 +128,9 @@ export function BindersPage({ cards, onOpenRare, onOpenBinder }: BindersPageProp
         ))}
         {binders.length === 0 && (
           <p className="placeholder pad">
-            Named binders come from your ManaBox export's “Binder Name”
-            column — import a CSV that has them and they'll show up here.
+            Create a binder above, or import a ManaBox CSV that has a
+            “Binder Name” column — named binders appear here, and you can
+            move cards into them from the Library's right-click menu.
           </p>
         )}
       </div>

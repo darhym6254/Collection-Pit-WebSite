@@ -7,7 +7,12 @@ import { Library } from "./Library";
 import { BindersPage } from "./BindersPage";
 import { Dashboard } from "./Dashboard";
 
-export type NavKey = "library" | "binder" | "binders" | "dashboard";
+export type NavKey =
+  | "library"
+  | "binder"
+  | "commanders"
+  | "binders"
+  | "dashboard";
 
 const BINDER_RARITIES = ["Rare", "Mythic", "Special"];
 const VALUE_FLOOR = 1.0;
@@ -86,7 +91,11 @@ export function Shell() {
             Library
           </button>
           <button
-            className={`nav-btn${nav === "binders" || nav === "binder" ? " active" : ""}`}
+            className={`nav-btn${
+              nav === "binders" || nav === "binder" || nav === "commanders"
+                ? " active"
+                : ""
+            }`}
             onClick={() => go("binders")}
           >
             Binders
@@ -134,6 +143,18 @@ export function Shell() {
             onBack={() => go("binders")}
           />
         )}
+        {nav === "commanders" && (
+          <Library
+            cards={cards}
+            refMap={refMap}
+            tagsMap={tagsMap}
+            prefix="commanders"
+            title="Possible Commanders"
+            subtitle="legendary creatures, commander planeswalkers and Backgrounds you own"
+            commanderLock
+            onBack={() => go("binders")}
+          />
+        )}
         {nav === "binders" &&
           (openBinder ? (
             <Library
@@ -148,7 +169,9 @@ export function Shell() {
           ) : (
             <BindersPage
               cards={cards}
+              refMap={refMap}
               onOpenRare={() => setNav("binder")}
+              onOpenCommanders={() => setNav("commanders")}
               onOpenBinder={setOpenBinder}
             />
           ))}

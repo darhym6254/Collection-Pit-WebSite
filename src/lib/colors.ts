@@ -56,6 +56,23 @@ export const COLOR_RANK: Record<string, number> = {
   Colorless: 6,
 };
 
+/** Possible Commanders membership (desktop rule): legendary creatures,
+ *  anything whose text says it can be your commander (commander
+ *  planeswalkers), and Backgrounds. */
+export function isCommanderEligible(
+  typeLine: string | undefined,
+  oracleText: string | undefined,
+): boolean {
+  const t = typeLine ?? "";
+  if (t.includes("Legendary") && t.includes("Creature")) {
+    return true;
+  }
+  if ((oracleText ?? "").toLowerCase().includes("can be your commander")) {
+    return true;
+  }
+  return t.includes("Background");
+}
+
 /** "Legendary Creature — Ooze" -> "Creature" (desktop main-type rule). */
 export function mainType(typeLine: string | undefined): string {
   const main = (typeLine ?? "").split("—")[0].trim();
