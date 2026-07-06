@@ -14,6 +14,7 @@ import {
   imageUrl,
 } from "../lib/scryfall";
 import type { RefEntry } from "../lib/reference";
+import { CardInfoModal } from "./CardInfoModal";
 import { ManaCost } from "./ManaCost";
 import {
   ColorFilter,
@@ -54,7 +55,7 @@ const TYPES = [
 
 /** One Library row: a card NAME aggregated over its printings, exactly
  *  like the desktop's GROUP BY cards.name. */
-interface AggRow {
+export interface AggRow {
   name: string;
   quantity: number;
   price: number;
@@ -215,6 +216,8 @@ export function Library({
     () => loadSetting(prefix, "sortdesc", "0") === "1",
   );
   const [selected, setSelected] = useState<AggRow | null>(null);
+  // Card Info modal: index into the CURRENT filtered list, null = closed.
+  const [modalAt, setModalAt] = useState<number | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -680,7 +683,7 @@ export function Library({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((r) => {
+                {filtered.map((r, i) => {
                   const isSel = selected?.name === r.name;
                   const dc = displayColor(r.colors);
                   return (
@@ -688,6 +691,7 @@ export function Library({
                       key={r.name}
                       className={isSel ? "sel" : ""}
                       onClick={() => setSelected(r)}
+                      onDoubleClick={() => setModalAt(i)}
                     >
                       <td className="card-name">{r.name}</td>
                       <td className="dim">{mainType(r.type_line)}</td>
@@ -717,6 +721,14 @@ export function Library({
 
         <Preview row={selected} />
       </div>
+
+      {modalAt !== null && (
+        <CardInfoModal
+          rows={filtered}
+          index={modalAt}
+          onClose={() => setModalAt(null)}
+        />
+      )}
     </div>
   );
 }
