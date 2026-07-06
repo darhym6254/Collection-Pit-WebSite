@@ -18,6 +18,15 @@ export interface CardRow {
   scryfall_id: string;
   price_usd: number;
   price_foil: number;
+  // Gameplay fields, filled in by the opt-in Scryfall enrichment (the web
+  // cousin of the desktop's reference/Scryfall lookup). Absent until then.
+  type_line?: string;
+  colors?: string; // "W,U" CSV like the desktop
+  color_identity?: string;
+  mana_cost?: string; // "{2}{W/U}"
+  cmc?: number;
+  oracle_text?: string;
+  banned_in?: string; // "Modern, Legacy" — formats where banned/restricted
 }
 
 // Header aliases: old and new ManaBox export formats (mirrors _COL_MAP

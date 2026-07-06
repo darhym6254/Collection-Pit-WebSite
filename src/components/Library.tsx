@@ -1,13 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/useAuth";
-import { importCards } from "../lib/collection";
+import { applyEnrichment, importCards } from "../lib/collection";
 import { cardPrice, parseManaBoxCsv, type CardRow } from "../lib/manabox";
+import {
+  COLOR_RANK,
+  colorsSubsetMatch,
+  displayColor,
+  mainType,
+} from "../lib/colors";
+import { fetchEnrichment, imageUrl } from "../lib/scryfall";
+import { ManaCost } from "./ManaCost";
+import {
+  ColorFilter,
+  decodeSelection,
+  encodeSelection,
+  type ColorSelection,
+} from "./ColorFilter";
 
 type SortKey =
   | "name"
+  | "type"
+  | "colors"
+  | "mana"
   | "set_code"
   | "rarity"
-  | "condition"
   | "quantity"
   | "price";
 
@@ -19,16 +35,98 @@ const RARITY_RANK: Record<string, number> = {
   Special: 4,
 };
 
+const TYPES = [
+  "All Types",
+  "Creature",
+  "Instant",
+  "Sorcery",
+  "Land",
+  "Artifact",
+  "Enchantment",
+  "Planeswalker",
+  "Battle",
+];
+
+/** One Library row: a card NAME aggregated over its printings, exactly
+ *  like the desktop's GROUP BY cards.name. */
+interface AggRow {
+  name: string;
+  quantity: number;
+  price: number;
+  rarity: string;
+  set_code: string;
+  binder: string;
+  foil: boolean;
+  type_line: string;
+  colors: string;
+  color_identity: string;
+  mana_cost: string;
+  cmc: number;
+  oracle_text: string;
+  banned_in: string;
+  scryfall_id: string;
+  printings: CardRow[];
+}
+
+function aggregate(cards: CardRow[]): AggRow[] {
+  const byName = new Map<string, AggRow>();
+  for (const c of cards) {
+    const key = c.name.toLowerCase();
+    let row = byName.get(key);
+    if (!row) {
+      row = {
+        name: c.name,
+        quantity: 0,
+        price: 0,
+        rarity: "",
+        set_code: c.set_code,
+        binder: "",
+        foil: false,
+        type_line: "",
+        colors: "",
+        color_identity: "",
+        mana_cost: "",
+        cmc: 0,
+        oracle_text: "",
+        banned_in: "",
+        scryfall_id: "",
+        printings: [],
+      };
+      byName.set(key, row);
+    }
+    row.quantity += c.quantity;
+    row.price = Math.max(row.price, cardPrice(c));
+    if ((RARITY_RANK[c.rarity] ?? -1) > (RARITY_RANK[row.rarity] ?? -1)) {
+      row.rarity = c.rarity;
+    }
+    row.foil = row.foil || c.foil;
+    if (c.binder && !row.binder.includes(c.binder)) {
+      row.binder = row.binder ? `${row.binder}, ${c.binder}` : c.binder;
+    }
+    if (!row.scryfall_id && c.scryfall_id) {
+      row.scryfall_id = c.scryfall_id;
+    }
+    if (!row.type_line && c.type_line) {
+      row.type_line = c.type_line;
+      row.colors = c.colors ?? "";
+      row.color_identity = c.color_identity ?? "";
+      row.mana_cost = c.mana_cost ?? "";
+      row.cmc = c.cmc ?? 0;
+      row.oracle_text = c.oracle_text ?? "";
+      row.banned_in = c.banned_in ?? "";
+    }
+    row.printings.push(c);
+  }
+  return [...byName.values()];
+}
+
 interface LibraryProps {
   cards: CardRow[] | null;
-  /** Settings/persistence prefix, mirroring the desktop's per-view keys. */
   prefix: string;
   title?: string;
   subtitle?: string;
-  /** Rare Binder lock: rarity list + $ floor (rarity OR value >= floor). */
   rarityLock?: string[];
   valueFloor?: number;
-  /** Named-binder lock (Binders page). */
   binderFilter?: string;
   onBack?: () => void;
 }
@@ -54,11 +152,29 @@ export function Library({
   const { user } = useAuth();
   const locked = Boolean(rarityLock || binderFilter);
   const [search, setSearch] = useState("");
+  const [typeF, setTypeF] = useState(() =>
+    loadSetting(prefix, "type", "All Types"),
+  );
+  const [colorSel, setColorSel] = useState<ColorSelection>(() =>
+    decodeSelection(loadSetting(prefix, "colorsel", "")),
+  );
   const [rarityF, setRarityF] = useState(() =>
     loadSetting(prefix, "rarity", "All Rarities"),
   );
   const [binderF, setBinderF] = useState(() =>
     loadSetting(prefix, "binder", "All Binders"),
+  );
+  const [mvMin, setMvMin] = useState(() =>
+    parseInt(loadSetting(prefix, "mvmin", "0"), 10),
+  );
+  const [mvMax, setMvMax] = useState(() =>
+    parseInt(loadSetting(prefix, "mvmax", "20"), 10),
+  );
+  const [textSearch, setTextSearch] = useState(
+    () => loadSetting(prefix, "text", "0") === "1",
+  );
+  const [identity, setIdentity] = useState(
+    () => loadSetting(prefix, "identity", "0") === "1",
   );
   const [foilOnly, setFoilOnly] = useState(
     () => loadSetting(prefix, "foil", "0") === "1",
@@ -69,20 +185,39 @@ export function Library({
   const [sortDesc, setSortDesc] = useState(
     () => loadSetting(prefix, "sortdesc", "0") === "1",
   );
-  const [selected, setSelected] = useState<CardRow | null>(null);
+  const [selected, setSelected] = useState<AggRow | null>(null);
   const [status, setStatus] = useState("");
-  const [importing, setImporting] = useState(false);
+  const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    saveSetting(prefix, "type", typeF);
+    saveSetting(prefix, "colorsel", encodeSelection(colorSel));
     saveSetting(prefix, "rarity", rarityF);
     saveSetting(prefix, "binder", binderF);
+    saveSetting(prefix, "mvmin", String(mvMin));
+    saveSetting(prefix, "mvmax", String(mvMax));
+    saveSetting(prefix, "text", textSearch ? "1" : "0");
+    saveSetting(prefix, "identity", identity ? "1" : "0");
     saveSetting(prefix, "foil", foilOnly ? "1" : "0");
     saveSetting(prefix, "sort", sortKey);
     saveSetting(prefix, "sortdesc", sortDesc ? "1" : "0");
-  }, [prefix, rarityF, binderF, foilOnly, sortKey, sortDesc]);
+  }, [
+    prefix,
+    typeF,
+    colorSel,
+    rarityF,
+    binderF,
+    mvMin,
+    mvMax,
+    textSearch,
+    identity,
+    foilOnly,
+    sortKey,
+    sortDesc,
+  ]);
 
-  // Membership: the same rules the desktop views use.
+  // Lock membership on the raw printings (Rare Binder / named binder).
   const inScope = useMemo(() => {
     return (cards ?? []).filter((c) => {
       if (binderFilter !== undefined && c.binder !== binderFilter) {
@@ -90,8 +225,7 @@ export function Library({
       }
       if (rarityLock) {
         const byRarity = rarityLock.includes(c.rarity);
-        const byValue =
-          valueFloor !== undefined && cardPrice(c) >= valueFloor;
+        const byValue = valueFloor !== undefined && cardPrice(c) >= valueFloor;
         if (!byRarity && !byValue) {
           return false;
         }
@@ -110,21 +244,56 @@ export function Library({
     return [...names].sort();
   }, [cards]);
 
+  const aggregated = useMemo(() => aggregate(inScope), [inScope]);
+
+  const unenriched = useMemo(
+    () => (cards ?? []).filter((c) => c.scryfall_id && !c.type_line).length,
+    [cards],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const rows = inScope.filter((c) => {
-      if (q && !c.name.toLowerCase().includes(q)) {
-        return false;
-      }
-      if (!locked && rarityF !== "All Rarities" && c.rarity !== rarityF) {
-        return false;
-      }
-      if (!locked && binderF !== "All Binders") {
-        if (binderF === "(No binder)" ? c.binder !== "" : c.binder !== binderF) {
+    const colorActive = colorSel.colors.size > 0 || colorSel.colorless;
+    const rows = aggregated.filter((r) => {
+      if (q) {
+        let hit = r.name.toLowerCase().includes(q);
+        if (!hit && textSearch) {
+          hit =
+            r.oracle_text.toLowerCase().includes(q) ||
+            r.type_line.toLowerCase().includes(q);
+        }
+        if (!hit) {
           return false;
         }
       }
-      if (foilOnly && !c.foil) {
+      if (typeF !== "All Types" && !r.type_line.includes(typeF)) {
+        return false;
+      }
+      if (colorActive) {
+        const field = identity ? r.color_identity : r.colors;
+        if (!colorsSubsetMatch(field, colorSel.colors, colorSel.colorless)) {
+          return false;
+        }
+      }
+      if (!rarityLock && rarityF !== "All Rarities" && r.rarity !== rarityF) {
+        return false;
+      }
+      if (binderFilter === undefined && binderF !== "All Binders") {
+        const match =
+          binderF === "(No binder)"
+            ? r.printings.some((p) => p.binder === "")
+            : r.printings.some((p) => p.binder === binderF);
+        if (!match) {
+          return false;
+        }
+      }
+      if (mvMin > 0 && r.cmc < mvMin) {
+        return false;
+      }
+      if (mvMax < 20 && r.cmc > mvMax) {
+        return false;
+      }
+      if (foilOnly && !r.foil) {
         return false;
       }
       return true;
@@ -137,16 +306,24 @@ export function Library({
           cmp = a.quantity - b.quantity;
           break;
         case "price":
-          cmp = cardPrice(a) - cardPrice(b);
+          cmp = a.price - b.price;
+          break;
+        case "mana":
+          cmp = a.cmc - b.cmc;
           break;
         case "rarity":
           cmp = (RARITY_RANK[a.rarity] ?? 99) - (RARITY_RANK[b.rarity] ?? 99);
           break;
+        case "colors":
+          cmp =
+            (COLOR_RANK[displayColor(a.colors)] ?? 99) -
+            (COLOR_RANK[displayColor(b.colors)] ?? 99);
+          break;
+        case "type":
+          cmp = mainType(a.type_line).localeCompare(mainType(b.type_line));
+          break;
         case "set_code":
           cmp = a.set_code.localeCompare(b.set_code);
-          break;
-        case "condition":
-          cmp = a.condition.localeCompare(b.condition);
           break;
         default:
           cmp = a.name.localeCompare(b.name);
@@ -154,14 +331,30 @@ export function Library({
       return dir * (cmp || a.name.localeCompare(b.name));
     });
     return rows;
-  }, [inScope, search, rarityF, binderF, foilOnly, sortKey, sortDesc, locked]);
+  }, [
+    aggregated,
+    search,
+    typeF,
+    colorSel,
+    rarityF,
+    binderF,
+    mvMin,
+    mvMax,
+    textSearch,
+    identity,
+    foilOnly,
+    sortKey,
+    sortDesc,
+    rarityLock,
+    binderFilter,
+  ]);
 
   const stats = useMemo(() => {
     const total = inScope.reduce((n, c) => n + c.quantity, 0);
-    const names = new Set(inScope.map((c) => c.name.toLowerCase())).size;
+    const names = aggregated.length;
     const value = inScope.reduce((v, c) => v + c.quantity * cardPrice(c), 0);
     return { total, names, value };
-  }, [inScope]);
+  }, [inScope, aggregated]);
 
   const onSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -176,7 +369,7 @@ export function Library({
     if (!user) {
       return;
     }
-    setImporting(true);
+    setBusy(true);
     try {
       setStatus(`Reading ${file.name}…`);
       const text = await file.text();
@@ -193,11 +386,42 @@ export function Library({
       await importCards(user.uid, parsed, (written, total) => {
         setStatus(`Uploading… ${written} / ${total} printings`);
       });
-      setStatus(`Imported ${parsed.length} printings (${copies} cards).`);
+      setStatus(
+        `Imported ${parsed.length} printings (${copies} cards). ` +
+          `Click "Scryfall Online" to fill in types, colors and mana.`,
+      );
     } catch (err) {
       setStatus(`Import failed: ${err instanceof Error ? err.message : err}`);
     } finally {
-      setImporting(false);
+      setBusy(false);
+    }
+  };
+
+  const onEnrich = async () => {
+    if (!user || !cards) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const patches = await fetchEnrichment(cards, (done, total) => {
+        setStatus(`Scryfall lookup… ${done} / ${total} printings`);
+      });
+      if (patches.size === 0) {
+        setStatus("Everything is already enriched.");
+        return;
+      }
+      await applyEnrichment(user.uid, cards, patches, (written, total) => {
+        setStatus(`Saving… ${written} / ${total} printings`);
+      });
+      setStatus(
+        `Enriched ${patches.size} printings — types, colors, mana and prices updated.`,
+      );
+    } catch (err) {
+      setStatus(
+        `Enrichment failed: ${err instanceof Error ? err.message : err}`,
+      );
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -225,19 +449,105 @@ export function Library({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <select
+          className="combo"
+          value={typeF}
+          onChange={(e) => setTypeF(e.target.value)}
+        >
+          {TYPES.map((t) => (
+            <option key={t}>{t}</option>
+          ))}
+        </select>
+        <ColorFilter value={colorSel} onChange={setColorSel} />
+        {!rarityLock && (
+          <select
+            className="combo"
+            value={rarityF}
+            onChange={(e) => setRarityF(e.target.value)}
+          >
+            {["All Rarities", "Common", "Uncommon", "Rare", "Mythic"].map(
+              (r) => (
+                <option key={r}>{r}</option>
+              ),
+            )}
+          </select>
+        )}
+        <div className="toolbar-spacer" />
         {!locked && (
           <>
-            <select
-              className="combo"
-              value={rarityF}
-              onChange={(e) => setRarityF(e.target.value)}
+            <button
+              className="primary-btn"
+              disabled={busy}
+              onClick={() => fileRef.current?.click()}
             >
-              {["All Rarities", "Common", "Uncommon", "Rare", "Mythic"].map(
-                (r) => (
-                  <option key={r}>{r}</option>
-                ),
-              )}
-            </select>
+              Import CSV
+            </button>
+            <button
+              className="ghost-btn"
+              disabled={busy}
+              title="Fetch types, colors, mana costs, rules text and current prices for your cards from Scryfall (uses each printing's Scryfall ID). Never runs automatically."
+              onClick={() => {
+                void onEnrich();
+              }}
+            >
+              Scryfall Online
+              {unenriched > 0 ? ` (${unenriched})` : ""}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) {
+                  void onFile(f);
+                }
+              }}
+            />
+          </>
+        )}
+      </div>
+
+      <div className="filter-bar">
+        <span className="filter-label">Mana value:</span>
+        <input
+          className="spin"
+          type="number"
+          min={0}
+          max={20}
+          value={mvMin}
+          onChange={(e) => setMvMin(Number(e.target.value))}
+        />
+        <span className="filter-label">–</span>
+        <input
+          className="spin"
+          type="number"
+          min={0}
+          max={20}
+          value={mvMax}
+          onChange={(e) => setMvMax(Number(e.target.value))}
+        />
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={textSearch}
+            onChange={(e) => setTextSearch(e.target.checked)}
+          />
+          Search card text
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={identity}
+            onChange={(e) => setIdentity(e.target.checked)}
+          />
+          Match color identity
+        </label>
+        {binderFilter === undefined && (
+          <>
+            <span className="filter-label">Binder:</span>
             <select
               className="combo"
               value={binderF}
@@ -259,31 +569,6 @@ export function Library({
           />
           Foils only
         </label>
-        <div className="toolbar-spacer" />
-        {!locked && (
-          <>
-            <button
-              className="primary-btn"
-              disabled={importing}
-              onClick={() => fileRef.current?.click()}
-            >
-              {importing ? "Importing…" : "Import CSV"}
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,text/csv"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (f) {
-                  void onFile(f);
-                }
-              }}
-            />
-          </>
-        )}
       </div>
 
       <div className="stat-bar">
@@ -304,7 +589,7 @@ export function Library({
         <div className="lib-table-wrap">
           {cards === null ? (
             <p className="placeholder pad">Loading your collection…</p>
-          ) : inScope.length === 0 ? (
+          ) : aggregated.length === 0 ? (
             <p className="placeholder pad">
               {locked
                 ? "Nothing here yet."
@@ -315,47 +600,55 @@ export function Library({
               <thead>
                 <tr>
                   <th onClick={() => onSort("name")}>Name{arrow("name")}</th>
+                  <th onClick={() => onSort("type")}>Type{arrow("type")}</th>
+                  <th onClick={() => onSort("colors")}>
+                    Colors{arrow("colors")}
+                  </th>
+                  <th onClick={() => onSort("mana")}>Mana{arrow("mana")}</th>
                   <th onClick={() => onSort("set_code")}>
                     Set{arrow("set_code")}
                   </th>
-                  <th>#</th>
-                  <th>Foil</th>
                   <th onClick={() => onSort("rarity")}>
                     Rarity{arrow("rarity")}
                   </th>
-                  <th onClick={() => onSort("condition")}>
-                    Cond.{arrow("condition")}
-                  </th>
                   <th className="num" onClick={() => onSort("quantity")}>
-                    Qty{arrow("quantity")}
+                    Owned{arrow("quantity")}
                   </th>
                   <th className="num" onClick={() => onSort("price")}>
                     Price{arrow("price")}
                   </th>
+                  <th>Binder</th>
+                  <th>Banned In</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((c, i) => {
-                  const price = cardPrice(c);
-                  const isSel = selected === c;
+                {filtered.map((r) => {
+                  const isSel = selected?.name === r.name;
+                  const dc = displayColor(r.colors);
                   return (
                     <tr
-                      key={i}
+                      key={r.name}
                       className={isSel ? "sel" : ""}
-                      onClick={() => setSelected(c)}
+                      onClick={() => setSelected(r)}
                     >
-                      <td className="card-name">{c.name}</td>
-                      <td>{c.set_code}</td>
-                      <td>{c.collector_number}</td>
-                      <td className="foil-mark">{c.foil ? "✦" : ""}</td>
-                      <td className={`rar-${c.rarity.toLowerCase()}`}>
-                        {c.rarity}
+                      <td className="card-name">{r.name}</td>
+                      <td className="dim">{mainType(r.type_line)}</td>
+                      <td className={`col-${dc.toLowerCase()}`}>
+                        {r.type_line ? dc : ""}
                       </td>
-                      <td>{c.condition}</td>
-                      <td className="num">{c.quantity}</td>
+                      <td>
+                        <ManaCost cost={r.mana_cost} />
+                      </td>
+                      <td className="dim">{r.set_code}</td>
+                      <td className={`rar-${r.rarity.toLowerCase()}`}>
+                        {r.rarity}
+                      </td>
+                      <td className="num">{r.quantity}</td>
                       <td className="num price">
-                        {price > 0 ? `$${price.toFixed(2)}` : "—"}
+                        {r.price > 0 ? `$${r.price.toFixed(2)}` : "—"}
                       </td>
+                      <td className="dim">{r.binder}</td>
+                      <td className="banned">{r.banned_in}</td>
                     </tr>
                   );
                 })}
@@ -364,63 +657,75 @@ export function Library({
           )}
         </div>
 
-        <Preview card={selected} />
+        <Preview row={selected} />
       </div>
     </div>
   );
 }
 
-/** Right-hand card preview, like the desktop's panel: image via the
- *  printing's Scryfall ID plus the key details underneath. */
-function Preview({ card }: { card: CardRow | null }) {
+function Preview({ row }: { row: AggRow | null }) {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     setLoaded(false);
-  }, [card]);
+  }, [row]);
 
   return (
     <aside className="preview">
       <div className="preview-img-slot">
-        {card?.scryfall_id ? (
+        {row?.scryfall_id ? (
           <img
-            key={card.scryfall_id}
+            key={row.scryfall_id}
             className={`preview-img${loaded ? " show" : ""}`}
-            src={`https://api.scryfall.com/cards/${card.scryfall_id}?format=image&version=normal`}
-            alt={card.name}
+            src={imageUrl(row.scryfall_id)}
+            alt={row.name}
             onLoad={() => setLoaded(true)}
           />
         ) : (
           <span className="preview-hint">
-            {card ? "No image for this printing" : "Select a card"}
+            {row ? "No image for this card" : "Select a card"}
           </span>
         )}
       </div>
-      {card && (
+      {row && (
         <div className="preview-details">
-          <div className="preview-name">{card.name}</div>
-          <div className="preview-line">
-            {card.set_name || card.set_code}
-            {card.collector_number ? ` · #${card.collector_number}` : ""}
-            {card.foil ? " · ✦ foil" : ""}
-          </div>
-          <div className="preview-line">
-            <span className={`rar-${card.rarity.toLowerCase()}`}>
-              {card.rarity}
-            </span>
-            {" · "}
-            {card.condition} · {card.language}
-          </div>
-          {card.binder && (
-            <div className="preview-line">Binder: {card.binder}</div>
+          <div className="preview-name">{row.name}</div>
+          {row.type_line && <div className="preview-line">{row.type_line}</div>}
+          {row.mana_cost && (
+            <div className="preview-line">
+              <ManaCost cost={row.mana_cost} />
+            </div>
           )}
+          {row.oracle_text && (
+            <div className="preview-oracle">
+              {row.oracle_text.length > 260
+                ? `${row.oracle_text.slice(0, 260)}…`
+                : row.oracle_text}
+            </div>
+          )}
+          {row.banned_in && (
+            <div className="preview-line banned">Banned: {row.banned_in}</div>
+          )}
+          <div className="preview-printings">
+            {row.printings.map((p, i) => (
+              <div className="preview-line dim" key={i}>
+                {p.set_code} #{p.collector_number}
+                {p.foil ? " ✦" : ""} · {p.condition} · ×{p.quantity}
+              </div>
+            ))}
+          </div>
           <div className="preview-badges">
             <span className="badge">
               Owned
-              <b>{card.quantity}</b>
+              <b>{row.quantity}</b>
             </span>
             <span className="badge gold">
               Value
-              <b>${(card.quantity * cardPrice(card)).toFixed(2)}</b>
+              <b>
+                $
+                {row.printings
+                  .reduce((v, p) => v + p.quantity * cardPrice(p), 0)
+                  .toFixed(2)}
+              </b>
             </span>
           </div>
         </div>

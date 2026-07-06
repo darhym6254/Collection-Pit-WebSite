@@ -66,3 +66,31 @@ export function subscribeCards(
     cb(snap.docs.map((d) => d.data() as CardRow));
   });
 }
+
+/** Merge Scryfall enrichment patches (keyed by scryfall_id) into every
+ *  matching printing document. Batched like the importer. */
+export async function applyEnrichment(
+  uid: string,
+  cards: CardRow[],
+  patches: Map<string, Partial<CardRow>>,
+  onProgress?: (written: number, total: number) => void,
+): Promise<number> {
+  const targets = cards.filter((c) => patches.has(c.scryfall_id));
+  const BATCH = 450;
+  let written = 0;
+  for (let i = 0; i < targets.length; i += BATCH) {
+    const chunk = targets.slice(i, i + BATCH);
+    const batch = writeBatch(db);
+    for (const card of chunk) {
+      batch.set(
+        doc(cardsCol(uid), cardDocId(card)),
+        patches.get(card.scryfall_id)!,
+        { merge: true },
+      );
+    }
+    await batch.commit();
+    written += chunk.length;
+    onProgress?.(written, targets.length);
+  }
+  return written;
+}
