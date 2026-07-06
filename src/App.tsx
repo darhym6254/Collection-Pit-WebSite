@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/useAuth";
+import { Library } from "./components/Library";
 
 function Spinner() {
   return (
@@ -46,7 +47,7 @@ function Home() {
         </button>
       </header>
       <main className="content">
-        <p className="placeholder">Your collection will appear here.</p>
+        <Library />
       </main>
     </div>
   );
