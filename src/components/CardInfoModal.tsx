@@ -9,18 +9,40 @@ interface Props {
   rows: AggRow[];
   index: number;
   onClose: () => void;
+  /** Lowercased name -> tags; with onSetTags enables the Tags editor. */
+  tagsMap?: Map<string, string[]>;
+  onSetTags?: (name: string, tags: string[]) => void;
 }
 
 /** Card Info modal — the web version of the desktop's read-first Card
  *  Info window: large image, full details, Prev/Next over the caller's
  *  visible list, Esc/backdrop/Close to dismiss. Action buttons arrive in
  *  a later phase (decks/binders first). */
-export function CardInfoModal({ rows, index: initial, onClose }: Props) {
+export function CardInfoModal({
+  rows,
+  index: initial,
+  onClose,
+  tagsMap,
+  onSetTags,
+}: Props) {
   const [index, setIndex] = useState(() =>
     Math.max(0, Math.min(initial, rows.length - 1)),
   );
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [tagInput, setTagInput] = useState("");
   const row = rows[index];
+  const tags = row ? (tagsMap?.get(row.name.toLowerCase()) ?? []) : [];
+
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (!t || !row || !onSetTags) {
+      return;
+    }
+    if (!tags.some((x) => x.toLowerCase() === t.toLowerCase())) {
+      onSetTags(row.name, [...tags, t]);
+    }
+    setTagInput("");
+  };
 
   const go = useCallback(
     (delta: number) => {
@@ -116,6 +138,48 @@ export function CardInfoModal({ rows, index: initial, onClose }: Props) {
                 </div>
               ))}
             </div>
+            {onSetTags && (
+              <div className="tags-block">
+                <div className="dim modal-line">Tags</div>
+                <div className="tag-chips">
+                  {tags.length === 0 && (
+                    <span className="dim modal-line">No tags yet</span>
+                  )}
+                  {tags.map((t) => (
+                    <button
+                      key={t}
+                      className="tag-chip"
+                      title={`Remove tag '${t}'`}
+                      onClick={() =>
+                        onSetTags(
+                          row.name,
+                          tags.filter((x) => x !== t),
+                        )
+                      }
+                    >
+                      {t} ✕
+                    </button>
+                  ))}
+                </div>
+                <div className="tag-add">
+                  <input
+                    className="search-field"
+                    placeholder="Add tag… (e.g. commander staple)"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        addTag();
+                      }
+                      e.stopPropagation();
+                    }}
+                  />
+                  <button className="stone-btn" onClick={addTag}>
+                    Add Tag
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="preview-badges">
               <span className="badge">
                 Owned

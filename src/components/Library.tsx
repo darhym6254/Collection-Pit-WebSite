@@ -1,7 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/useAuth";
-import { applyEnrichment, importCards } from "../lib/collection";
-import { cardPrice, parseManaBoxCsv, type CardRow } from "../lib/manabox";
+import {
+  addCardManual,
+  adjustQuantity,
+  applyEnrichment,
+  clearLibrary,
+  deletePrintings,
+  importCards,
+  movePrintings,
+  setCardTags,
+} from "../lib/collection";
+import {
+  cardPrice,
+  parseManaBoxCsv,
+  toManaBoxCsv,
+  type CardRow,
+} from "../lib/manabox";
 import {
   COLOR_RANK,
   colorsSubsetMatch,
@@ -15,6 +29,14 @@ import {
 } from "../lib/scryfall";
 import type { RefEntry } from "../lib/reference";
 import { CardInfoModal } from "./CardInfoModal";
+import {
+  AddCardModal,
+  CardSearchModal,
+  ConfirmClearModal,
+  ContextMenu,
+  CONDITIONS,
+  type CtxAction,
+} from "./LibraryModals";
 import { ManaCost } from "./ManaCost";
 import {
   ColorFilter,
@@ -151,6 +173,8 @@ function aggregate(
 interface LibraryProps {
   cards: CardRow[] | null;
   refMap: Map<string, RefEntry> | null;
+  /** Lowercased card name -> tags (searchable, shown in Card Info). */
+  tagsMap?: Map<string, string[]>;
   prefix: string;
   title?: string;
   subtitle?: string;
@@ -171,6 +195,7 @@ function saveSetting(prefix: string, key: string, value: string) {
 export function Library({
   cards,
   refMap,
+  tagsMap,
   prefix,
   title,
   subtitle,
@@ -218,6 +243,12 @@ export function Library({
   const [selected, setSelected] = useState<AggRow | null>(null);
   // Card Info modal: index into the CURRENT filtered list, null = closed.
   const [modalAt, setModalAt] = useState<number | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showClear, setShowClear] = useState(false);
+  const [ctx, setCtx] = useState<{ x: number; y: number; row: AggRow } | null>(
+    null,
+  );
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -287,6 +318,13 @@ export function Library({
     const rows = aggregated.filter((r) => {
       if (q) {
         let hit = r.name.toLowerCase().includes(q);
+        if (!hit) {
+          // Tags always match the search box (desktop rule).
+          hit =
+            tagsMap
+              ?.get(r.name.toLowerCase())
+              ?.some((t) => t.toLowerCase().includes(q)) ?? false;
+        }
         if (!hit && textSearch) {
           hit =
             r.oracle_text.toLowerCase().includes(q) ||
@@ -490,6 +528,103 @@ export function Library({
   const arrow = (key: SortKey) =>
     sortKey === key ? (sortDesc ? " ▾" : " ▴") : "";
 
+  const onExport = () => {
+    const csv = toManaBoxCsv(inScope);
+    const blob = new Blob([csv], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    const label = binderFilter || (rarityLock ? "rare_binder" : "collection");
+    a.download = `${label}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    setStatus(`Exported ${inScope.length} printings (ManaBox format).`);
+  };
+
+  const onClear = async () => {
+    if (!user || !cards) {
+      return;
+    }
+    setShowClear(false);
+    setBusy(true);
+    try {
+      const n = await clearLibrary(user.uid, cards, (done, total) => {
+        setStatus(`Deleting… ${done} / ${total}`);
+      });
+      setStatus(`Library cleared — ${n} printings deleted.`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const ctxActions = (row: AggRow): CtxAction[] => {
+    if (!user || !cards) {
+      return [];
+    }
+    const uid = user.uid;
+    const all = cards;
+    return [
+      {
+        label: `Set condition (${row.printings.length})`,
+        children: CONDITIONS.map((c) => ({
+          label: c,
+          act: () => {
+            void movePrintings(uid, all, row.printings, { condition: c });
+          },
+        })),
+      },
+      {
+        label: "Set foil",
+        children: [
+          {
+            label: "Foil ✦",
+            act: () => {
+              void movePrintings(uid, all, row.printings, { foil: true });
+            },
+          },
+          {
+            label: "Non-foil",
+            act: () => {
+              void movePrintings(uid, all, row.printings, { foil: false });
+            },
+          },
+        ],
+      },
+      {
+        label: "+1 quantity",
+        act: () => {
+          void adjustQuantity(uid, row.printings[0], +1);
+        },
+      },
+      {
+        label: "−1 quantity",
+        act: () => {
+          void adjustQuantity(uid, row.printings[0], -1);
+        },
+      },
+      {
+        label: "Move to binder…",
+        act: () => {
+          const b = window.prompt(
+            `Move ${row.name} to binder (blank = none):\nExisting: ${binderNames.join(", ") || "—"}`,
+            row.printings[0].binder,
+          );
+          if (b !== null) {
+            void movePrintings(uid, all, row.printings, { binder: b.trim() });
+          }
+        },
+      },
+      {
+        label: `Delete ${row.name}`,
+        danger: true,
+        act: () => {
+          if (window.confirm(`Delete all printings of ${row.name}?`)) {
+            void deletePrintings(uid, row.printings);
+          }
+        },
+      },
+    ];
+  };
+
   return (
     <div className="collection-view">
       {(title || onBack) && (
@@ -538,6 +673,13 @@ export function Library({
         {!locked && (
           <>
             <button
+              className="primary-btn"
+              disabled={busy}
+              onClick={() => setShowAdd(true)}
+            >
+              + Add Card
+            </button>
+            <button
               className="stone-btn"
               disabled={busy}
               onClick={() => fileRef.current?.click()}
@@ -553,6 +695,13 @@ export function Library({
               }}
             >
               Scryfall Online
+            </button>
+            <button
+              className="stone-btn danger"
+              disabled={busy || !cards?.length}
+              onClick={() => setShowClear(true)}
+            >
+              Clear Library
             </button>
             <input
               ref={fileRef}
@@ -630,6 +779,19 @@ export function Library({
           />
           Foils only
         </label>
+        <div className="toolbar-spacer" />
+        {!rarityLock && (
+          <button className="stone-btn" onClick={() => setShowSearch(true)}>
+            Card Search…
+          </button>
+        )}
+        <button
+          className="stone-btn"
+          disabled={!inScope.length}
+          onClick={onExport}
+        >
+          Export CSV
+        </button>
       </div>
 
       <div className="stat-bar">
@@ -692,6 +854,11 @@ export function Library({
                       className={isSel ? "sel" : ""}
                       onClick={() => setSelected(r)}
                       onDoubleClick={() => setModalAt(i)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setSelected(r);
+                        setCtx({ x: e.clientX, y: e.clientY, row: r });
+                      }}
                     >
                       <td className="card-name">{r.name}</td>
                       <td className="dim">{mainType(r.type_line)}</td>
@@ -727,6 +894,51 @@ export function Library({
           rows={filtered}
           index={modalAt}
           onClose={() => setModalAt(null)}
+          tagsMap={tagsMap}
+          onSetTags={
+            user
+              ? (name, tags) => {
+                  void setCardTags(user.uid, name, tags);
+                }
+              : undefined
+          }
+        />
+      )}
+      {showAdd && user && cards && (
+        <AddCardModal
+          binders={binderNames}
+          onClose={() => setShowAdd(false)}
+          onSubmit={(card) => {
+            setShowAdd(false);
+            void addCardManual(user.uid, cards, card).then(() =>
+              setStatus(`Added ${card.quantity}× ${card.name}.`),
+            );
+          }}
+        />
+      )}
+      {showSearch && (
+        <CardSearchModal
+          ownedNames={
+            new Set((cards ?? []).map((c) => c.name.toLowerCase()))
+          }
+          onClose={() => setShowSearch(false)}
+        />
+      )}
+      {showClear && (
+        <ConfirmClearModal
+          total={stats.total}
+          onClose={() => setShowClear(false)}
+          onConfirm={() => {
+            void onClear();
+          }}
+        />
+      )}
+      {ctx && (
+        <ContextMenu
+          x={ctx.x}
+          y={ctx.y}
+          actions={ctxActions(ctx.row)}
+          onClose={() => setCtx(null)}
         />
       )}
     </div>

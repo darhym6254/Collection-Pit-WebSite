@@ -9,9 +9,12 @@
  */
 import {
   collection,
+  deleteDoc,
   onSnapshot,
   orderBy,
   query,
+  setDoc,
+  updateDoc,
   writeBatch,
   doc,
   type Unsubscribe,
@@ -65,6 +68,139 @@ export function subscribeCards(
   return onSnapshot(q, (snap) => {
     cb(snap.docs.map((d) => d.data() as CardRow));
   });
+}
+
+/** Update printings with a patch. Doc ids derive from the identity key
+ *  (name/set/collector/foil/condition/language/binder), so key-field
+ *  changes MOVE the document — and when the destination printing already
+ *  exists, quantities merge (the desktop's ON CONFLICT upsert rule). */
+export async function movePrintings(
+  uid: string,
+  all: CardRow[],
+  targets: CardRow[],
+  patch: Partial<CardRow>,
+): Promise<void> {
+  const byId = new Map(all.map((c) => [cardDocId(c), c]));
+  const targetIds = new Set(targets.map((t) => cardDocId(t)));
+  const batch = writeBatch(db);
+  for (const p of targets) {
+    const np = { ...p, ...patch };
+    const oldId = cardDocId(p);
+    const newId = cardDocId(np);
+    if (newId === oldId) {
+      batch.set(doc(cardsCol(uid), newId), np);
+      continue;
+    }
+    const existing = byId.get(newId);
+    if (existing && !targetIds.has(newId)) {
+      np.quantity += existing.quantity;
+    }
+    batch.delete(doc(cardsCol(uid), oldId));
+    batch.set(doc(cardsCol(uid), newId), np);
+  }
+  await batch.commit();
+}
+
+/** Delete specific printings. */
+export async function deletePrintings(
+  uid: string,
+  targets: CardRow[],
+): Promise<void> {
+  const batch = writeBatch(db);
+  for (const p of targets) {
+    batch.delete(doc(cardsCol(uid), cardDocId(p)));
+  }
+  await batch.commit();
+}
+
+/** Adjust one printing's quantity (floors at 1 — deleting is explicit). */
+export async function adjustQuantity(
+  uid: string,
+  printing: CardRow,
+  delta: number,
+): Promise<void> {
+  const q = Math.max(1, printing.quantity + delta);
+  await updateDoc(doc(cardsCol(uid), cardDocId(printing)), { quantity: q });
+}
+
+/** Manually add a printing; merges quantity into an existing identical
+ *  printing (same identity key) instead of duplicating. */
+export async function addCardManual(
+  uid: string,
+  all: CardRow[],
+  card: CardRow,
+): Promise<void> {
+  const id = cardDocId(card);
+  const existing = all.find((c) => cardDocId(c) === id);
+  const merged = existing
+    ? { ...existing, ...card, quantity: existing.quantity + card.quantity }
+    : card;
+  await setDoc(doc(cardsCol(uid), id), merged);
+}
+
+/** Delete the WHOLE library (decks/binders metadata untouched). */
+export async function clearLibrary(
+  uid: string,
+  all: CardRow[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<number> {
+  const BATCH = 450;
+  let done = 0;
+  for (let i = 0; i < all.length; i += BATCH) {
+    const chunk = all.slice(i, i + BATCH);
+    const batch = writeBatch(db);
+    for (const c of chunk) {
+      batch.delete(doc(cardsCol(uid), cardDocId(c)));
+    }
+    await batch.commit();
+    done += chunk.length;
+    onProgress?.(done, all.length);
+  }
+  return done;
+}
+
+// ── Card tags (name-keyed, like the desktop's card_tags table) ─────────────
+
+function tagsCol(uid: string) {
+  return collection(db, "users", uid, "cardTags");
+}
+
+function tagDocId(name: string): string {
+  const bytes = new TextEncoder().encode(name.toLowerCase());
+  let bin = "";
+  for (const b of bytes) {
+    bin += String.fromCharCode(b);
+  }
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** Live map of lowercased card name -> tags. */
+export function subscribeTags(
+  uid: string,
+  cb: (tags: Map<string, string[]>) => void,
+): Unsubscribe {
+  return onSnapshot(tagsCol(uid), (snap) => {
+    const map = new Map<string, string[]>();
+    for (const d of snap.docs) {
+      const data = d.data() as { name: string; tags: string[] };
+      map.set(data.name.toLowerCase(), data.tags ?? []);
+    }
+    cb(map);
+  });
+}
+
+/** Replace a card's tag list (empty list removes the doc). */
+export async function setCardTags(
+  uid: string,
+  name: string,
+  tags: string[],
+): Promise<void> {
+  const ref = doc(tagsCol(uid), tagDocId(name));
+  if (tags.length === 0) {
+    await deleteDoc(ref);
+  } else {
+    await setDoc(ref, { name, tags });
+  }
 }
 
 /** Merge Scryfall enrichment patches (keyed by scryfall_id) into every

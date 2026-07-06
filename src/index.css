@@ -981,6 +981,130 @@ h1.app-title {
   }
 }
 
+/* ── Context menu ── */
+.ctx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+
+.ctx-menu {
+  position: fixed;
+  min-width: 190px;
+  background: #12121e;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
+.ctx-item {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  padding: 7px 14px;
+  font-size: 13px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.ctx-item:hover {
+  background: #0d2233;
+  color: var(--cyan);
+}
+
+.ctx-item.danger {
+  color: #f05a5a;
+}
+
+/* ── Form modal (Add Card) ── */
+.form-modal {
+  max-width: 460px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px 10px;
+  align-items: center;
+  padding: 12px 0;
+}
+
+.form-grid label {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.search-field.wide {
+  width: 100%;
+}
+
+/* ── Card Search modal ── */
+.search-modal {
+  max-width: 760px;
+  height: 80vh;
+}
+
+.lib-toolbar-row {
+  display: flex;
+  gap: 8px;
+  padding: 10px 0;
+}
+
+.search-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--border-dim);
+  background: rgba(10, 10, 22, 0.6);
+}
+
+.search-note {
+  font-size: 11px;
+  margin: 6px 0 0;
+}
+
+/* ── Tag chips ── */
+.tags-block {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-chip {
+  background: #0d2233;
+  color: #7ecfe0;
+  border: 1px solid #1a4a5e;
+  border-radius: 10px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tag-chip:hover {
+  background: #143349;
+  border-color: var(--cyan);
+}
+
+.tag-add {
+  display: flex;
+  gap: 8px;
+}
+
+.tag-add .search-field {
+  width: 220px;
+}
+
 .spinner {
   width: 36px;
   height: 36px;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/useAuth";
-import { subscribeCards } from "../lib/collection";
+import { subscribeCards, subscribeTags } from "../lib/collection";
 import type { CardRow } from "../lib/manabox";
 import { loadReference, type RefEntry } from "../lib/reference";
 import { Library } from "./Library";
@@ -25,11 +25,20 @@ export function Shell() {
   const [refMap, setRefMap] = useState<Map<string, RefEntry> | null>(null);
   const [refStatus, setRefStatus] = useState("Loading card reference…");
 
+  const [tagsMap, setTagsMap] = useState<Map<string, string[]>>(new Map());
+
   useEffect(() => {
     if (!user) {
       return;
     }
     return subscribeCards(user.uid, setCards);
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    return subscribeTags(user.uid, setTagsMap);
   }, [user]);
 
   useEffect(() => {
@@ -105,12 +114,18 @@ export function Shell() {
 
       <main className="view">
         {nav === "library" && (
-          <Library cards={cards} refMap={refMap} prefix="library" />
+          <Library
+            cards={cards}
+            refMap={refMap}
+            tagsMap={tagsMap}
+            prefix="library"
+          />
         )}
         {nav === "binder" && (
           <Library
             cards={cards}
             refMap={refMap}
+            tagsMap={tagsMap}
             prefix="binder"
             title="Rare Binder"
             subtitle="rares, mythics, specials and any card worth $1.00 or more"
@@ -124,6 +139,7 @@ export function Shell() {
             <Library
               cards={cards}
               refMap={refMap}
+              tagsMap={tagsMap}
               prefix="binderspage"
               title={openBinder}
               binderFilter={openBinder}

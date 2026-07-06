@@ -215,3 +215,61 @@ export function cardKey(c: CardRow): string {
 export function cardPrice(c: CardRow): number {
   return c.price_usd > 0 ? c.price_usd : c.price_foil;
 }
+
+// ── Export (mirrors the desktop's _MANABOX_HEADERS/_manabox_row) ───────────
+
+const MANABOX_HEADERS = [
+  "Name",
+  "Set code",
+  "Set name",
+  "Collector number",
+  "Foil",
+  "Rarity",
+  "Quantity",
+  "ManaBox ID",
+  "Scryfall ID",
+  "Purchase price",
+  "Misprint",
+  "Altered",
+  "Condition",
+  "Language",
+  "Purchase price currency",
+  "Binder Name",
+];
+
+function csvField(v: string | number): string {
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** Serialize printings to a ManaBox-format CSV (round-trips with the
+ *  importer and with the desktop app). */
+export function toManaBoxCsv(cards: CardRow[]): string {
+  const lines = [MANABOX_HEADERS.join(",")];
+  for (const c of cards) {
+    const price = c.foil ? c.price_foil : c.price_usd;
+    lines.push(
+      [
+        c.name,
+        c.set_code,
+        c.set_name,
+        c.collector_number,
+        c.foil ? "foil" : "normal",
+        c.rarity.toLowerCase(),
+        c.quantity,
+        "",
+        c.scryfall_id,
+        price || "",
+        "false",
+        "false",
+        c.condition || "NM",
+        c.language || "EN",
+        "USD",
+        c.binder,
+      ]
+        .map(csvField)
+        .join(","),
+    );
+  }
+  return lines.join("\r\n") + "\r\n";
+}
