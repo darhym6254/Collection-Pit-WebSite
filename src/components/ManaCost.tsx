@@ -63,7 +63,7 @@ export function ManaCost({ cost }: { cost: string | undefined }) {
           <img
             key={i}
             className="mana-icon"
-            src={`/mana/${icon}.png`}
+            src={`/assets/mana/${icon}.png`}
             alt={`{${token}}`}
           />
         ) : (

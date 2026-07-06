@@ -64,7 +64,11 @@ export function Shell() {
   return (
     <div className="pit-shell">
       <aside className="sidebar">
-        <img className="side-logo" src="/art/app_logo.png" alt="Collection Pit" />
+        <img
+          className="side-logo"
+          src="/assets/app_logo.png"
+          alt="Collection Pit"
+        />
         <nav className="side-nav">
           <button
             className={`nav-btn${nav === "library" ? " active" : ""}`}

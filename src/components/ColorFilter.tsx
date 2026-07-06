@@ -105,7 +105,7 @@ export function ColorFilter({
                 {code !== "C" ? (
                   <img
                     className="mana-icon"
-                    src={`/mana/${
+                    src={`/assets/mana/${
                       {
                         W: "White_Mana",
                         U: "Blue_Mana",
@@ -117,7 +117,11 @@ export function ColorFilter({
                     alt=""
                   />
                 ) : (
-                  <img className="mana-icon" src="/mana/Colorless_Mana.png" alt="" />
+                  <img
+                    className="mana-icon"
+                    src="/assets/mana/Colorless_Mana.png"
+                    alt=""
+                  />
                 )}
                 {name}
               </label>

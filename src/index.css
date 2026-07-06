@@ -4,6 +4,11 @@
    glowing at the bottom of the window. */
 :root {
   --bg: #05070d;
+  --obsidian: #0a0e1a;
+  --panel: rgba(5, 7, 13, 0.55);
+  --cyan: #00c8ff;
+  --ice: #7fd4ff;
+  --steel: #3a4656;
   --surface: #0d0d1e;
   --input: #12121e;
   --border: #2a2a40;
@@ -11,9 +16,10 @@
   --text: #c8c8e0;
   --text-mid: #9898b8;
   --text-dim: #666676;
-  --accent: #00c8d4;
+  --accent: var(--cyan);
   --accent-dark: #007a88;
   --gold: #d4af37;
+  --mythic: #e87000;
   --amber: #c89b3c;
   font-family: "Segoe UI", system-ui, Avenir, Helvetica, Arial, sans-serif;
   color-scheme: dark;
@@ -31,10 +37,21 @@ body,
 
 body {
   margin: 0;
-  background:
-    linear-gradient(rgba(5, 7, 13, 0.55), rgba(5, 7, 13, 0.35)),
-    #05070d url("/art/pit_bg.jpg") no-repeat bottom center / cover;
+  background: var(--bg);
   color: var(--text);
+}
+
+/* The pit: a fixed full-viewport layer behind everything, with a
+   translucent scrim so table text stays readable over the glow. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(rgba(5, 7, 13, 0.5), rgba(5, 7, 13, 0.3)),
+    var(--bg) url("/assets/pit_bg.jpg") no-repeat bottom center;
+  background-size: cover;
 }
 
 button,
@@ -89,11 +106,11 @@ h1.app-title {
   align-items: center;
   padding: 18px 0 14px;
   /* The desktop skin's stone sidebar frame (9-slice, halved source:
-     512x768, rails ~150px). */
+     512x768, rails ~150px). Transparent center — the pit shows through. */
   border-style: solid;
   border-width: 8px 18px 10px 18px;
-  border-image: url("/art/sidebar_frame.png") 20 150 20 150 fill stretch;
-  background: rgba(5, 7, 13, 0.72);
+  border-image: url("/assets/sidebar_frame.png") 20 150 20 150 stretch;
+  background: transparent;
 }
 
 .side-logo {
@@ -114,22 +131,23 @@ h1.app-title {
 .nav-btn {
   background: transparent;
   color: var(--text-mid);
-  border: 1px solid transparent;
-  border-radius: 5px;
+  border: none;
   padding: 9px 12px;
   font-size: 14px;
+  letter-spacing: 0.4px;
   cursor: pointer;
   text-align: center;
 }
 
 .nav-btn:hover {
-  color: var(--accent);
+  color: var(--ice);
 }
 
 .nav-btn.active {
-  background: #0d2233;
-  color: var(--accent);
-  border-color: #1a4a5e;
+  color: var(--cyan);
+  text-shadow:
+    0 0 8px rgba(0, 200, 255, 0.65),
+    0 0 20px rgba(0, 200, 255, 0.3);
 }
 
 .side-spacer {
@@ -284,8 +302,8 @@ h1.app-title {
 }
 
 .mana-icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   vertical-align: middle;
 }
 
@@ -293,13 +311,13 @@ h1.app-title {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: #3a3a44;
   border: 1px solid #5a5a66;
   color: #e8e8f0;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -443,9 +461,11 @@ h1.app-title {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  border: 1px solid var(--border-dim);
-  border-radius: 8px;
-  background: rgba(10, 10, 22, 0.82);
+  /* Ornate panel frame (transparent center; --panel scrim for text). */
+  border-style: solid;
+  border-width: 22px;
+  border-image: url("/assets/panel_frame.png") 79 83 80 83 stretch;
+  background: var(--panel);
 }
 
 .lib-table {
@@ -459,7 +479,7 @@ h1.app-title {
   top: 0;
   z-index: 1;
   background: #10101c;
-  color: var(--text-dim);
+  color: rgba(127, 212, 255, 0.6);
   text-align: left;
   font-weight: 600;
   padding: 9px 12px;
@@ -470,7 +490,7 @@ h1.app-title {
 }
 
 .lib-table th:hover {
-  color: var(--accent);
+  color: var(--cyan);
 }
 
 .lib-table td {
@@ -516,7 +536,7 @@ h1.app-title {
 }
 
 .rar-mythic {
-  color: #ff8c3c;
+  color: var(--mythic);
 }
 
 .rar-rare {
@@ -543,21 +563,25 @@ h1.app-title {
 
 /* ── Preview panel ── */
 .preview {
-  width: 280px;
+  width: 312px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  align-self: flex-start;
+  /* Whole preview panel wrapped in the ornate art frame. */
+  border-style: solid;
+  border-width: 22px;
+  border-image: url("/assets/art_frame.png") 79 83 80 83 stretch;
+  background: var(--panel);
+  padding: 8px;
 }
 
 .preview-img-slot {
-  width: 280px;
-  height: 391px;
-  /* Ornate art frame from the desktop skin (627x627, slices halved). */
-  border-style: solid;
-  border-width: 22px;
-  border-image: url("/art/art_frame.png") 79 83 80 83 fill stretch;
-  background: transparent;
+  width: 100%;
+  height: 356px;
+  background: rgba(10, 10, 22, 0.6);
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -800,12 +824,12 @@ h1.app-title {
 .stone-btn {
   border-style: solid;
   border-width: 7px 24px;
-  border-image: url("/art/button_rest.png") 15 60 15 60 fill stretch;
+  border-image: url("/assets/button_rest.png") 15 60 15 60 fill stretch;
   background: transparent;
-  color: #cfe8f2;
-  min-height: 32px;
+  color: var(--ice);
+  min-height: 30px;
   min-width: 92px;
-  padding: 4px 10px;
+  padding: 2px 14px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -813,17 +837,23 @@ h1.app-title {
 }
 
 .stone-btn:hover:not(:disabled) {
-  border-image: url("/art/button_hover.png") 15 60 15 60 fill stretch;
+  border-image: url("/assets/button_hover.png") 15 60 15 60 fill stretch;
   color: #eaf6ff;
 }
 
 .stone-btn:active:not(:disabled) {
-  border-image: url("/art/button_pressed.png") 14 45 14 45 fill stretch;
+  border-image: url("/assets/button_pressed.png") 14 45 14 45 fill stretch;
 }
 
 .stone-btn:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+/* Destructive variant (future Clear-Library-style actions). */
+.stone-btn.danger {
+  color: #f05a5a;
+  text-shadow: 0 0 6px rgba(240, 90, 90, 0.5);
 }
 
 .ghost-btn {
