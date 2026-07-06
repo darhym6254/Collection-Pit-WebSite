@@ -1,6 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/useAuth";
-import { Library } from "./components/Library";
+import { Shell } from "./components/Shell";
 
 function Spinner() {
   return (
@@ -31,26 +31,7 @@ function Login() {
 }
 
 function Home() {
-  const { user, signOutUser } = useAuth();
-  return (
-    <div className="shell">
-      <header className="topbar">
-        <span className="app-title">Collection Pit</span>
-        <span className="user-email">{user?.email}</span>
-        <button
-          className="ghost-btn"
-          onClick={() => {
-            void signOutUser();
-          }}
-        >
-          Sign out
-        </button>
-      </header>
-      <main className="content">
-        <Library />
-      </main>
-    </div>
-  );
+  return <Shell />;
 }
 
 export default function App() {
