@@ -875,6 +875,12 @@ h1.app-title {
   text-shadow: 0 0 6px rgba(240, 90, 90, 0.5);
 }
 
+/* Active toggle (e.g. Group by Category on). */
+.stone-btn.on {
+  color: var(--cyan);
+  text-shadow: 0 0 8px rgba(0, 200, 255, 0.6);
+}
+
 .ghost-btn {
   background: transparent;
   color: var(--text);

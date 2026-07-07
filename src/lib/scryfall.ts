@@ -250,6 +250,76 @@ export function imageUrl(scryfallId: string): string {
   return `https://api.scryfall.com/cards/${scryfallId}?format=image&version=normal`;
 }
 
+/** Printing identifiers for deck cards you don't own, looked up by NAME
+ *  via /cards/collection (75 per call), cached per session. */
+export interface NamePrinting {
+  scryfall_id: string;
+  set_code: string;
+  rarity: string;
+}
+
+const nameCache = new Map<string, NamePrinting | null>();
+
+export async function lookupPrintingsByName(
+  names: string[],
+): Promise<Map<string, NamePrinting>> {
+  const wanted = [...new Set(names.map((n) => n.toLowerCase()))];
+  const missing = wanted.filter((n) => !nameCache.has(n));
+  for (let i = 0; i < missing.length; i += BATCH) {
+    const chunk = missing.slice(i, i + BATCH);
+    try {
+      const res = await fetch(ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifiers: chunk.map((name) => ({ name })),
+        }),
+      });
+      if (!res.ok) {
+        break; // blocked (ad-blocker) — leave uncached, degrade gracefully
+      }
+      const body = (await res.json()) as {
+        data?: (ScryCard & { set?: string; rarity?: string; name?: string })[];
+      };
+      const seen = new Set<string>();
+      for (const sc of body.data ?? []) {
+        const k = (sc.name ?? "").toLowerCase();
+        seen.add(k);
+        nameCache.set(k, {
+          scryfall_id: sc.id,
+          set_code: (sc.set ?? "").toUpperCase(),
+          rarity: sc.rarity
+            ? sc.rarity.charAt(0).toUpperCase() + sc.rarity.slice(1)
+            : "",
+        });
+        // Front-face alias for DFC names.
+        const front = (sc.card_faces?.[0]?.name ?? "").toLowerCase();
+        if (front && !nameCache.has(front)) {
+          nameCache.set(front, nameCache.get(k)!);
+        }
+      }
+      for (const n of chunk) {
+        if (!seen.has(n) && !nameCache.has(n)) {
+          nameCache.set(n, null); // not found — don't re-ask
+        }
+      }
+      if (i + BATCH < missing.length) {
+        await sleep(DELAY_MS);
+      }
+    } catch {
+      break;
+    }
+  }
+  const out = new Map<string, NamePrinting>();
+  for (const n of wanted) {
+    const hit = nameCache.get(n);
+    if (hit) {
+      out.set(n, hit);
+    }
+  }
+  return out;
+}
+
 /** Fuzzy by-name lookup — fills in printing identifiers (Scryfall ID,
  *  set, collector number, rarity, prices) for manually added cards so
  *  images and prices work without a CSV import. Returns null when the

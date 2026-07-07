@@ -1,7 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/useAuth";
 import { addCardManual } from "../lib/collection";
-import { displayColor, mainType } from "../lib/colors";
+import { COLOR_RANK, displayColor, mainType } from "../lib/colors";
+import {
+  lookupPrintingsByName,
+  type NamePrinting,
+} from "../lib/scryfall";
 import {
   allocatedMap,
   computeAnalytics,
@@ -25,6 +29,23 @@ import { ContextMenu, type CtxAction } from "./LibraryModals";
 import { ManaCost } from "./ManaCost";
 
 const CURVE_LABELS = ["0", "1", "2", "3", "4", "5", "6", "7+"];
+const CATEGORIES = ["Ramp", "Removal", "Card Draw", "Win Con", "Synergy", "Lands"];
+const RARITY_RANK: Record<string, number> = {
+  Common: 0,
+  Uncommon: 1,
+  Rare: 2,
+  Mythic: 3,
+  Special: 4,
+};
+type DeckSortKey =
+  | "name"
+  | "qty"
+  | "type"
+  | "colors"
+  | "mana"
+  | "set"
+  | "rarity"
+  | "owned";
 const COLOR_ORDER = ["W", "U", "B", "R", "G", "C"];
 const COLOR_HEX: Record<string, string> = {
   W: "#f0e8d0",
@@ -66,6 +87,16 @@ export function DeckView({
   const [showAnalytics, setShowAnalytics] = useState(true);
   const [showBrowser, setShowBrowser] = useState(true);
   const [showImport, setShowImport] = useState(false);
+  const [groupByCat, setGroupByCat] = useState(
+    () => localStorage.getItem("cp.deck.groupcat") !== "0",
+  );
+  const [sortCol, setSortCol] = useState<DeckSortKey>("name");
+  const [sortDesc, setSortDesc] = useState(false);
+  // Printing data for deck cards you don't own, fetched by NAME.
+  const [nameData, setNameData] = useState<Map<string, NamePrinting>>(
+    new Map(),
+  );
+  const requestedRef = useRef<Set<string>>(new Set());
   const [modalRows, setModalRows] = useState<AggRow[] | null>(null);
   const [modalAt, setModalAt] = useState(0);
   const [ctx, setCtx] = useState<{
@@ -95,6 +126,38 @@ export function DeckView({
     return m;
   }, [verdict]);
 
+  // Fetch printing data (set / rarity / image) by NAME for deck cards you
+  // don't own — the desktop reads these from an owned printing, so unowned
+  // cards would otherwise show blank Set/Rarity and no Card Info image.
+  useEffect(() => {
+    const wanted = deck.cards
+      .map((c) => c.card_name)
+      .filter((n) => (owned.get(n.toLowerCase()) ?? 0) === 0)
+      .filter((n) => !requestedRef.current.has(n.toLowerCase()));
+    if (wanted.length === 0) {
+      return;
+    }
+    for (const n of wanted) {
+      requestedRef.current.add(n.toLowerCase());
+    }
+    let cancelled = false;
+    void lookupPrintingsByName(wanted).then((map) => {
+      if (cancelled || map.size === 0) {
+        return;
+      }
+      setNameData((prev) => {
+        const next = new Map(prev);
+        for (const [k, v] of map) {
+          next.set(k, v);
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [deck.cards, owned]);
+
   // Per-name need within THIS deck, then row status against global
   // availability (owned never decremented; other decks tie copies up).
   const rows = useMemo(() => {
@@ -117,30 +180,85 @@ export function DeckView({
       const otherAlloc = Math.max(0, (allocated.get(k) ?? 0) - thisNeed);
       const st = rowStatus(thisNeed, own, otherAlloc);
       const p = byNamePrinting.get(k);
+      const np = nameData.get(k);
       return {
         entry,
         ref: lookup(entry.card_name),
         owned: own,
         status: st.status,
         missing: st.missing,
-        setCode: p?.set_code ?? "",
-        rarity: p?.rarity ?? "",
+        setCode: p?.set_code ?? np?.set_code ?? "",
+        rarity: p?.rarity ?? np?.rarity ?? "",
       };
     };
-    const sortByName = (a: DeckRow, b: DeckRow) =>
-      a.entry.card_name.localeCompare(b.entry.card_name);
+    // Sort WITHIN each section by the clicked column; the sections
+    // themselves stay in fixed order (Commanders / Mainboard / Sideboard).
+    const dir = sortDesc ? -1 : 1;
+    const cmp = (a: DeckRow, b: DeckRow): number => {
+      let c = 0;
+      switch (sortCol) {
+        case "qty":
+          c = a.entry.quantity - b.entry.quantity;
+          break;
+        case "type":
+          c = mainType(a.ref?.type_line).localeCompare(
+            mainType(b.ref?.type_line),
+          );
+          break;
+        case "colors":
+          c =
+            (COLOR_RANK[displayColor(a.ref?.colors)] ?? 99) -
+            (COLOR_RANK[displayColor(b.ref?.colors)] ?? 99);
+          break;
+        case "mana":
+          c = (a.ref?.cmc ?? 0) - (b.ref?.cmc ?? 0);
+          break;
+        case "set":
+          c = a.setCode.localeCompare(b.setCode);
+          break;
+        case "rarity":
+          c = (RARITY_RANK[a.rarity] ?? 99) - (RARITY_RANK[b.rarity] ?? 99);
+          break;
+        case "owned":
+          c = a.owned - b.owned;
+          break;
+        default:
+          c = a.entry.card_name.localeCompare(b.entry.card_name);
+      }
+      return dir * (c || a.entry.card_name.localeCompare(b.entry.card_name));
+    };
     return {
-      commanders: deck.cards.filter((c) => c.is_commander).map(make),
+      commanders: deck.cards.filter((c) => c.is_commander).map(make).sort(cmp),
       mainboard: deck.cards
         .filter((c) => !c.is_commander && !c.is_sideboard)
         .map(make)
-        .sort(sortByName),
+        .sort(cmp),
       sideboard: deck.cards
         .filter((c) => c.is_sideboard)
         .map(make)
-        .sort(sortByName),
+        .sort(cmp),
     };
-  }, [deck, cards, owned, allocated, lookup]);
+  }, [deck, cards, owned, allocated, lookup, nameData, sortCol, sortDesc]);
+
+  // Coverage: total copies the deck needs vs how many you own toward it
+  // (owned capped at need per name — the desktop's owned/needed readout).
+  const coverage = useMemo(() => {
+    const need = new Map<string, number>();
+    for (const e of deck.cards) {
+      const k = e.card_name.toLowerCase();
+      need.set(k, (need.get(k) ?? 0) + e.quantity);
+    }
+    let needTotal = 0;
+    let missingTotal = 0;
+    for (const [k, n] of need) {
+      needTotal += n;
+      const own = owned.get(k) ?? 0;
+      if (own < n) {
+        missingTotal += n - own;
+      }
+    }
+    return { have: needTotal - missingTotal, need: needTotal };
+  }, [deck.cards, owned]);
 
   const missingLines = useMemo(() => {
     const lines: string[] = [];
@@ -193,12 +311,13 @@ export function DeckView({
         return aggregate(prints, refMap)[0];
       }
       const ref = lookup(n);
+      const np = nameData.get(n.toLowerCase());
       return {
         name: n,
         quantity: 0,
         price: 0,
-        rarity: "",
-        set_code: "",
+        rarity: np?.rarity ?? "",
+        set_code: np?.set_code ?? "",
         binder: "",
         foil: false,
         type_line: ref?.type_line ?? "",
@@ -208,7 +327,7 @@ export function DeckView({
         cmc: ref?.cmc ?? 0,
         oracle_text: ref?.oracle_text ?? "",
         banned_in: ref?.banned_in ?? "",
-        scryfall_id: "",
+        scryfall_id: np?.scryfall_id ?? "",
         printings: [],
       };
     });
@@ -253,16 +372,26 @@ export function DeckView({
         ]
       : []),
     {
-      label: "Set category…",
-      act: () => {
-        const cat = window.prompt(
-          "Category (e.g. Ramp, Removal — blank clears):",
-          entry.category,
-        );
-        if (cat !== null) {
-          mutateEntry(entry, (e) => ({ ...e, category: cat.trim() }));
-        }
-      },
+      label: "Set category",
+      children: [
+        ...CATEGORIES.map((c) => ({
+          label: c,
+          act: () => mutateEntry(entry, (e) => ({ ...e, category: c })),
+        })),
+        {
+          label: "Custom…",
+          act: () => {
+            const cat = window.prompt("Category name:", entry.category);
+            if (cat !== null) {
+              mutateEntry(entry, (e) => ({ ...e, category: cat.trim() }));
+            }
+          },
+        },
+        {
+          label: "Clear category",
+          act: () => mutateEntry(entry, (e) => ({ ...e, category: "" })),
+        },
+      ],
     },
     {
       label: `Remove ${entry.card_name}`,
@@ -334,11 +463,37 @@ export function DeckView({
     download(`${deck.name}.csv`, toManaBoxCsv(rowsCsv), "text/csv");
   };
 
-  const section = (label: string, list: DeckRow[]) => {
+  const unknownSet = new Set(verdict.unknown.map((n) => n.toLowerCase()));
+  const onRowCtx = (e: React.MouseEvent, entry: DeckCard) => {
+    e.preventDefault();
+    setCtx({ x: e.clientX, y: e.clientY, entry });
+  };
+
+  const section = (label: string, list: DeckRow[], allowGroups: boolean) => {
     if (list.length === 0) {
       return null;
     }
-    // Category stacks inside the mainboard when categories are in use.
+    const header = (
+      <tr className="deck-section" key={`${label}-h`}>
+        <td colSpan={8}>{label}</td>
+      </tr>
+    );
+    // Category stacks only in the mainboard, only when the toggle is on.
+    if (!allowGroups) {
+      return (
+        <>
+          {header}
+          <SectionRows
+            cat=""
+            members={list}
+            issuesByName={issuesByName}
+            unknown={unknownSet}
+            onInfo={openInfo}
+            onCtx={onRowCtx}
+          />
+        </>
+      );
+    }
     const groups = new Map<string, DeckRow[]>();
     for (const r of list) {
       const g = r.entry.category || "";
@@ -349,25 +504,33 @@ export function DeckView({
     );
     return (
       <>
-        <tr className="deck-section">
-          <td colSpan={8}>{label}</td>
-        </tr>
+        {header}
         {grouped.map(([cat, members]) => (
           <SectionRows
             key={cat || "_"}
             cat={groups.size > 1 || cat ? cat : ""}
             members={members}
             issuesByName={issuesByName}
-            unknown={new Set(verdict.unknown.map((n) => n.toLowerCase()))}
+            unknown={unknownSet}
             onInfo={openInfo}
-            onCtx={(e, entry) => {
-              e.preventDefault();
-              setCtx({ x: e.clientX, y: e.clientY, entry });
-            }}
+            onCtx={onRowCtx}
           />
         ))}
       </>
     );
+  };
+
+  const thProps = {
+    sortCol,
+    sortDesc,
+    onSort: (k: DeckSortKey) => {
+      if (sortCol === k) {
+        setSortDesc((d) => !d);
+      } else {
+        setSortCol(k);
+        setSortDesc(false);
+      }
+    },
   };
 
   return (
@@ -387,6 +550,20 @@ export function DeckView({
         </select>
         <span className="dim">
           {totalCards} cards{sbCards ? ` | ${sbCards} sideboard` : ""}
+        </span>
+        <span
+          className="dim"
+          title="Copies you own toward this deck vs total copies it needs"
+        >
+          Owned{" "}
+          <b
+            className={
+              coverage.have < coverage.need ? "deck-missing" : "deck-ok"
+            }
+          >
+            {coverage.have}
+          </b>{" "}
+          / {coverage.need}
         </span>
         <span
           className={`legality-badge ${
@@ -410,6 +587,17 @@ export function DeckView({
             : `✗ Not legal — ${verdict.issues.length} issue(s)`}
         </span>
         <div className="toolbar-spacer" />
+        <button
+          className={`stone-btn${groupByCat ? " on" : ""}`}
+          title="Group the mainboard into category stacks"
+          onClick={() => {
+            const next = !groupByCat;
+            setGroupByCat(next);
+            localStorage.setItem("cp.deck.groupcat", next ? "1" : "0");
+          }}
+        >
+          Group by Category
+        </button>
         <button
           className="stone-btn"
           onClick={() => setShowAnalytics((v) => !v)}
@@ -453,20 +641,20 @@ export function DeckView({
             <table className="lib-table">
               <thead>
                 <tr>
-                  <th>Card</th>
-                  <th className="num">Qty</th>
-                  <th>Type</th>
-                  <th>Colors</th>
-                  <th>Mana</th>
-                  <th>Set</th>
-                  <th>Rarity</th>
-                  <th className="num">Owned</th>
+                  <DeckTh k="name" label="Card" {...thProps} />
+                  <DeckTh k="qty" label="Qty" num {...thProps} />
+                  <DeckTh k="type" label="Type" {...thProps} />
+                  <DeckTh k="colors" label="Colors" {...thProps} />
+                  <DeckTh k="mana" label="Mana" {...thProps} />
+                  <DeckTh k="set" label="Set" {...thProps} />
+                  <DeckTh k="rarity" label="Rarity" {...thProps} />
+                  <DeckTh k="owned" label="Owned" num {...thProps} />
                 </tr>
               </thead>
               <tbody>
-                {section("Commanders", rows.commanders)}
-                {section("Mainboard", rows.mainboard)}
-                {section("Sideboard", rows.sideboard)}
+                {section("Commanders", rows.commanders, false)}
+                {section("Mainboard", rows.mainboard, groupByCat)}
+                {section("Sideboard", rows.sideboard, false)}
               </tbody>
             </table>
           )}
@@ -557,6 +745,33 @@ export function DeckView({
         />
       )}
     </div>
+  );
+}
+
+function DeckTh({
+  k,
+  label,
+  num,
+  sortCol,
+  sortDesc,
+  onSort,
+}: {
+  k: DeckSortKey;
+  label: string;
+  num?: boolean;
+  sortCol: DeckSortKey;
+  sortDesc: boolean;
+  onSort: (k: DeckSortKey) => void;
+}) {
+  return (
+    <th
+      className={num ? "num" : undefined}
+      style={{ cursor: "pointer" }}
+      onClick={() => onSort(k)}
+    >
+      {label}
+      {sortCol === k ? (sortDesc ? " ▾" : " ▴") : ""}
+    </th>
   );
 }
 
