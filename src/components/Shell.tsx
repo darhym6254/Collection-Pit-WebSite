@@ -16,6 +16,8 @@ import {
   subscribeWishlist,
   type WishEntry,
 } from "../lib/wishlist";
+import { importCards } from "../lib/collection";
+import { DeckImportDialog } from "./DeckImportDialog";
 import { Library } from "./Library";
 import { BindersPage } from "./BindersPage";
 import { Dashboard } from "./Dashboard";
@@ -109,19 +111,34 @@ export function Shell() {
     }
   };
 
+  // Import Deck: parse first, then confirm via the desktop-style dialog.
+  const [deckImport, setDeckImport] = useState<{
+    fileName: string;
+    cards: CardRow[];
+  } | null>(null);
+
   const onImportDeckFile = async (file: File) => {
-    if (!user) {
-      return;
-    }
     const { cards: parsed } = parseManaBoxCsv(await file.text());
-    if (!parsed.length) {
+    if (parsed.length) {
+      setDeckImport({ fileName: file.name, cards: parsed });
+    }
+  };
+
+  const onCreateImportedDeck = (
+    name: string,
+    format: string,
+    alsoLibrary: boolean,
+  ) => {
+    if (!user || !deckImport) {
       return;
     }
-    // Deck entries hold DESIRED counts only — the library is unchanged.
+    const parsed = deckImport.cards;
+    setDeckImport(null);
+    // Deck entries hold DESIRED counts only — the library is unchanged
+    // unless the user opted in.
     const byName = new Map<string, number>();
     for (const c of parsed) {
-      const k = c.name;
-      byName.set(k, (byName.get(k) ?? 0) + c.quantity);
+      byName.set(c.name, (byName.get(c.name) ?? 0) + c.quantity);
     }
     const entries: DeckCard[] = [...byName.entries()].map(([n, q]) => ({
       card_name: n,
@@ -130,8 +147,12 @@ export function Shell() {
       is_sideboard: false,
       category: "",
     }));
-    const name = file.name.replace(/\.csv$/i, "");
-    void createDeck(user.uid, name, "Commander", entries).then(openDeck);
+    void createDeck(user.uid, name, format, entries).then((id) => {
+      openDeck(id);
+      if (alsoLibrary) {
+        void importCards(user.uid, parsed);
+      }
+    });
   };
 
   useEffect(() => {
@@ -351,6 +372,14 @@ export function Shell() {
           <span />
           <span className="ref-status">{refStatus}</span>
         </div>
+        {deckImport && (
+          <DeckImportDialog
+            fileName={deckImport.fileName}
+            cards={deckImport.cards}
+            onCreate={onCreateImportedDeck}
+            onClose={() => setDeckImport(null)}
+          />
+        )}
       </main>
     </div>
   );

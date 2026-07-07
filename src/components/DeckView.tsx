@@ -8,7 +8,6 @@ import {
   COMMANDER_FORMATS,
   FORMATS,
   ownedMap,
-  parseDecklistText,
   rowStatus,
   saveDeck,
   deleteDeck,
@@ -17,6 +16,7 @@ import {
   type Deck,
   type DeckCard,
 } from "../lib/decks";
+import { parseDecklistFile, parseDecklistText } from "../lib/decklist";
 import { cardPrice, toManaBoxCsv, type CardRow } from "../lib/manabox";
 import type { RefEntry } from "../lib/reference";
 import { aggregate, type AggRow } from "./Library";
@@ -882,6 +882,7 @@ function ImportDecklistModal({
   onImport: (entries: DeckCard[]) => void;
 }) {
   const [text, setText] = useState("");
+  const fileRef = { current: null as HTMLInputElement | null };
   return (
     <div
       className="modal-backdrop"
@@ -894,8 +895,9 @@ function ImportDecklistModal({
       <div className="modal form-modal">
         <div className="modal-name">Import Decklist</div>
         <p className="modal-line dim">
-          One card per line: “4 Lightning Bolt”. Lines after “Sideboard” (or
-          prefixed “SB:”) go to the sideboard.
+          One card per line: “4 Lightning Bolt”. “Commander: X” and section
+          headers (Deck / Sideboard / Commander) work; printing suffixes
+          like “(C21) 263” are stripped. Or load a .txt/.csv file.
         </p>
         <textarea
           className="decklist-input"
@@ -905,6 +907,33 @@ function ImportDecklistModal({
           onChange={(e) => setText(e.target.value)}
         />
         <div className="modal-footer">
+          <button
+            className="stone-btn"
+            onClick={() => fileRef.current?.click()}
+          >
+            Load from file…
+          </button>
+          <input
+            ref={(el) => {
+              fileRef.current = el;
+            }}
+            type="file"
+            accept=".txt,.csv,text/plain,text/csv"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) {
+                void f.text().then((content) => {
+                  const entries = parseDecklistFile(f.name, content);
+                  if (entries.length) {
+                    onImport(entries);
+                  }
+                });
+              }
+            }}
+          />
+          <div className="toolbar-spacer" />
           <button className="stone-btn" onClick={onClose}>
             Cancel
           </button>

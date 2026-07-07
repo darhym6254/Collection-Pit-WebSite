@@ -22,7 +22,7 @@ export interface RefEntry {
 }
 
 /** Bump when RefEntry's shape changes so stale caches re-download. */
-const SCHEMA = 2;
+const SCHEMA = 3; // v3: + brawl legality
 
 const BULK_META = "https://api.scryfall.com/bulk-data/oracle-cards";
 const DB_NAME = "cp-reference";
@@ -36,6 +36,7 @@ const FORMAT_LABELS: Record<string, string> = {
   vintage: "Vintage",
   commander: "Commander",
   pauper: "Pauper",
+  brawl: "Brawl",
 };
 
 // Placeholder layouts share names with real cards — never match them.

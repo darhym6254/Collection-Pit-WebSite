@@ -43,10 +43,11 @@ export const FORMATS = [
   "Legacy",
   "Vintage",
   "Pauper",
+  "Brawl",
 ];
 
-export const COMMANDER_FORMATS = new Set(["Commander"]);
-const SINGLETON_FORMATS = new Set(["Commander"]);
+export const COMMANDER_FORMATS = new Set(["Commander", "Brawl"]);
+const SINGLETON_FORMATS = new Set(["Commander", "Brawl"]);
 
 // ── CRUD ────────────────────────────────────────────────────────────────────
 
@@ -74,16 +75,48 @@ export async function createDeck(
   format: string,
   cards: DeckCard[] = [],
 ): Promise<string> {
-  const ref = await addDoc(decksCol(uid), { name, format, cards });
+  const now = Date.now();
+  const ref = await addDoc(decksCol(uid), {
+    name,
+    format,
+    cards,
+    createdAt: now,
+    updatedAt: now,
+  });
   return ref.id;
 }
 
 export async function saveDeck(uid: string, deck: Deck): Promise<void> {
-  await setDoc(doc(decksCol(uid), deck.id), {
-    name: deck.name,
-    format: deck.format,
-    cards: deck.cards,
-  });
+  await setDoc(
+    doc(decksCol(uid), deck.id),
+    {
+      name: deck.name,
+      format: deck.format,
+      cards: deck.cards,
+      updatedAt: Date.now(),
+    },
+    { merge: true },
+  );
+}
+
+/** Merge a batch of parsed entries (decklist import) into a deck,
+ *  preserving commander/sideboard flags. */
+export async function addDeckCards(
+  uid: string,
+  deck: Deck,
+  entries: DeckCard[],
+): Promise<void> {
+  let next = deck;
+  for (const e of entries) {
+    next = withCardAdded(
+      next,
+      e.card_name,
+      e.quantity,
+      e.is_commander,
+      e.is_sideboard,
+    );
+  }
+  await saveDeck(uid, next);
 }
 
 export async function deleteDeck(uid: string, id: string): Promise<void> {
@@ -119,43 +152,7 @@ export function withCardAdded(
   return { ...deck, cards };
 }
 
-// ── Decklist parsing (services/decklist.py) ─────────────────────────────────
-
-/** Parse "4 Lightning Bolt" / "4x Lightning Bolt" text decklists with
- *  optional sideboard sections ("Sideboard", "SB:" prefixes). */
-export function parseDecklistText(text: string): DeckCard[] {
-  const out: DeckCard[] = [];
-  let sideboard = false;
-  for (const raw of text.split(/\r?\n/)) {
-    let line = raw.trim();
-    if (!line || line.startsWith("//") || line.startsWith("#")) {
-      continue;
-    }
-    if (/^(sideboard|side board)\b/i.test(line)) {
-      sideboard = true;
-      continue;
-    }
-    let sb = sideboard;
-    if (/^SB:\s*/i.test(line)) {
-      sb = true;
-      line = line.replace(/^SB:\s*/i, "");
-    }
-    const m = line.match(/^(\d+)\s*x?\s+(.+)$/i);
-    const qty = m ? parseInt(m[1], 10) : 1;
-    const name = (m ? m[2] : line).trim();
-    if (!name) {
-      continue;
-    }
-    out.push({
-      card_name: name,
-      quantity: qty,
-      is_commander: false,
-      is_sideboard: sb,
-      category: "",
-    });
-  }
-  return out;
-}
+// (Decklist parsing lives in src/lib/decklist.ts.)
 
 // ── Ownership / availability math (the desktop's invariants) ───────────────
 //   owned(name)     = SUM(cards.quantity)      — never reduced by decks
